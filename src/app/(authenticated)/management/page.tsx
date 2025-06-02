@@ -43,6 +43,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 
 interface TurmaData {
@@ -68,6 +72,12 @@ interface ProvaData {
   peso: number; 
   data: Timestamp; 
   createdAt: Timestamp; 
+}
+
+interface StudentForPrintData {
+  uid: string;
+  matricula: string;
+  nomeCompleto: string;
 }
 
 
@@ -100,8 +110,12 @@ export default function ManagementPage() {
   const [selectedDisciplinaIdForProva, setSelectedDisciplinaIdForProva] = useState<string | undefined>(undefined);
   const [newProvaNome, setNewProvaNome] = useState("");
   const [newProvaPeso, setNewProvaPeso] = useState<string>(""); 
-  const [newProvaData, setNewProvaData] = useState<string | undefined>(undefined); // For text input
+  const [newProvaData, setNewProvaData] = useState<string | undefined>(undefined); 
   const [isProcessingProva, setIsProcessingProva] = useState(false);
+  
+  // State for "Imprimir Lista de Chamada" dialog (Admin only)
+  const [isSelectTurmaForPrintDialogOpen, setIsSelectTurmaForPrintDialogOpen] = useState(false);
+  const [adminSelectedTurmaIdForPrintList, setAdminSelectedTurmaIdForPrintList] = useState<string | undefined>(undefined);
 
 
   const isAdmin = userProfile?.role === USER_ROLES.ADMIN;
@@ -329,16 +343,15 @@ export default function ManagementPage() {
         return;
     }
     const pesoNum = parseFloat(newProvaPeso);
-    if (isNaN(pesoNum) || pesoNum <= 0 || pesoNum > 10) { // Assuming weight max 10, adjust if needed
+    if (isNaN(pesoNum) || pesoNum <= 0 || pesoNum > 10) { 
         toast({ title: "Peso inválido", description: "O peso deve ser um número entre 0.01 e 10.", variant: "destructive"});
         return;
     }
-    if (!newProvaData || !newProvaData.trim()) { // Check if newProvaData (string) is empty
+     if (!newProvaData || !newProvaData.trim()) { 
         toast({ title: "Data da prova obrigatória", description: "Por favor, insira a data da prova.", variant: "destructive"});
         return;
     }
 
-    // Validate date format dd/mm/yyyy
     const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
     const match = newProvaData.match(dateRegex);
     if (!match) {
@@ -347,23 +360,22 @@ export default function ManagementPage() {
     }
 
     const day = parseInt(match[1], 10);
-    const month = parseInt(match[2], 10) - 1; // Month is 0-indexed in JS Date
+    const month = parseInt(match[2], 10) - 1; 
     const year = parseInt(match[3], 10);
     const parsedDate = new Date(year, month, day);
-
-    // Check if the parsed date components match the input (e.g., no 30/02/2025)
+    
     if (isNaN(parsedDate.getTime()) || parsedDate.getDate() !== day || parsedDate.getMonth() !== month || parsedDate.getFullYear() !== year) {
         toast({ title: "Data Inválida", description: "A data inserida não é válida (ex: 30/02/2025).", variant: "destructive"});
         return;
     }
     
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Set to start of today for comparison
+    today.setHours(0, 0, 0, 0); 
     if (parsedDate < today) {
         toast({ title: "Data Passada", description: "A data da prova não pode ser no passado.", variant: "destructive" });
         return;
     }
-
+    
     setIsProcessingProva(true);
     try {
         const provaDataToSave: Omit<ProvaData, "id"> = {
@@ -371,25 +383,21 @@ export default function ManagementPage() {
             disciplinaId: selectedDisciplinaIdForProva,
             nome: newProvaNome.trim(),
             peso: pesoNum,
-            data: Timestamp.fromDate(parsedDate), // Convert JS Date to Firebase Timestamp
+            data: Timestamp.fromDate(parsedDate), 
             createdAt: serverTimestamp() as Timestamp,
         };
 
         await addDoc(collection(db, "provas"), provaDataToSave);
         toast({ title: "Prova Cadastrada!", description: `A prova "${newProvaNome.trim()}" foi salva com sucesso.`});
 
-        // Reset form and close dialog
         setIsCadastrarProvaDialogOpen(false);
         setNewProvaNome("");
         setNewProvaPeso("");
-        setNewProvaData(undefined); // Reset string date state
+        setNewProvaData(undefined);
         setSelectedDisciplinaIdForProva(undefined);
         if (isAdmin) {
-            setSelectedTurmaIdForProva(undefined); // Also reset turma if admin
+            setSelectedTurmaIdForProva(undefined); 
         } 
-        // Note: Consider if disciplinasForProvaDropdown should be refetched or cleared here.
-        // For now, it will refetch when selectedTurmaIdForProva changes.
-
     } catch (error: any) {
         console.error("Error adding prova:", error);
         let errMsg = "Ocorreu um erro ao tentar cadastrar a prova.";
@@ -399,6 +407,20 @@ export default function ManagementPage() {
         toast({ title: "Erro no Cadastro da Prova", description: errMsg, variant: "destructive"});
     } finally {
         setIsProcessingProva(false);
+    }
+  };
+
+  const handleGeneratePrintList = () => {
+    if (isAdmin) {
+        if (!adminSelectedTurmaIdForPrintList) {
+            toast({title: "Seleção Necessária", description: "Por favor, selecione uma turma para gerar a lista.", variant: "destructive"});
+            return;
+        }
+        router.push(`/print/attendance-list?turmaId=${adminSelectedTurmaIdForPrintList}`);
+        setIsSelectTurmaForPrintDialogOpen(false);
+        setAdminSelectedTurmaIdForPrintList(undefined);
+    } else if (isRepresentative && userProfile?.turmaId) {
+        router.push(`/print/attendance-list?turmaId=${userProfile.turmaId}`);
     }
   };
 
@@ -438,9 +460,57 @@ export default function ManagementPage() {
                 <UploadCloud className="mr-2 h-5 w-5" /> Lançar Notas da Turma
               </Link>
             </Button>
-            <Button variant="secondary" onClick={() => handleManagementAction("Imprimir Lista de Chamada")} className="w-full">
-              <Printer className="mr-2 h-5 w-5" /> Imprimir Lista de Chamada
-            </Button>
+
+            {isAdmin && (
+                 <Dialog open={isSelectTurmaForPrintDialogOpen} onOpenChange={(isOpen) => {
+                    setIsSelectTurmaForPrintDialogOpen(isOpen);
+                    if (!isOpen) setAdminSelectedTurmaIdForPrintList(undefined);
+                 }}>
+                    <DialogTrigger asChild>
+                        <Button variant="secondary" className="w-full">
+                            <Printer className="mr-2 h-5 w-5" /> Imprimir Lista de Chamada
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Selecionar Turma para Impressão</DialogTitle>
+                            <DialogDescription>
+                                Escolha a turma para a qual deseja gerar a lista de chamada.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                             {loadingTurmas ? (
+                                <div className="col-span-3 flex items-center"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando turmas...</div>
+                            ) : (
+                                <Select value={adminSelectedTurmaIdForPrintList} onValueChange={setAdminSelectedTurmaIdForPrintList}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione uma turma" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {activeTurmas.map(turma => (
+                                            <SelectItem key={turma.id} value={turma.id}>{turma.nome}</SelectItem>
+                                        ))}
+                                        {activeTurmas.length === 0 && <p className="p-2 text-sm text-muted-foreground">Nenhuma turma ativa.</p>}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsSelectTurmaForPrintDialogOpen(false)}>Cancelar</Button>
+                            <Button onClick={handleGeneratePrintList} disabled={!adminSelectedTurmaIdForPrintList || loadingTurmas}>
+                                Gerar Lista
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                 </Dialog>
+            )}
+            {isRepresentative && (
+                <Button variant="secondary" className="w-full" onClick={handleGeneratePrintList}>
+                    <Printer className="mr-2 h-5 w-5" /> Imprimir Lista de Chamada
+                </Button>
+            )}
+
+
             <Button variant="outline" onClick={() => handleManagementAction("Gerenciar Comunicados da Turma")} className="w-full">
               <Megaphone className="mr-2 h-5 w-5" /> Gerenciar Comunicados
             </Button>
@@ -722,9 +792,9 @@ export default function ManagementPage() {
                             </span>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="prova-data" className="text-right">Data da Prova</Label>
+                           <Label htmlFor="prova-data-input" className="text-right">Data da Prova</Label>
                             <Input
-                                id="prova-data"
+                                id="prova-data-input"
                                 type="text"
                                 value={newProvaData || ""}
                                 onChange={(e) => setNewProvaData(e.target.value)}
@@ -767,7 +837,7 @@ export default function ManagementPage() {
                 <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => router.push('/admin/turmas')}>
                   <Users className="mr-2 h-5 w-5" /> Gerir Turmas
                 </Button>
-                 <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => handleManagementAction("Teste")}>
+                 <Button variant="outline" className="w-full" onClick={() => handleManagementAction("Teste")}>
                     <FlaskConical className="mr-2 h-5 w-5" /> Teste
                 </Button>
               </div>
@@ -777,11 +847,12 @@ export default function ManagementPage() {
           <div className="mt-6 p-4 border border-dashed border-secondary/30 rounded-md bg-secondary/5">
             <h3 className="text-xl font-semibold text-secondary-foreground/80 mb-2">Avisos e Próximos Passos:</h3>
             <ul className="list-disc list-inside text-sm text-secondary-foreground/70 space-y-1">
-              <li>As funcionalidades de "Imprimir Chamada", "Comunicados", etc., são simulações.</li>
+              <li>A funcionalidade "Imprimir Lista de Chamada" agora direciona para uma página de impressão.</li>
+              <li>As funcionalidades de "Comunicados", "Calendário Acadêmico" etc., ainda são simulações.</li>
               <li>A funcionalidade "Adicionar Aluno à Turma" interage com o Firestore.</li>
               <li>A funcionalidade "Cadastrar Disciplina" salva os dados no Firestore.</li>
               <li>A funcionalidade "Cadastrar Prova" salva os dados no Firestore.</li>
-              <li>A nova página "Lançar Notas da Turma" (/management/grades) utiliza IA (Genkit) para processamento.</li>
+              <li>A página "Lançar Notas da Turma" (/management/grades) utiliza IA (Genkit) para processamento.</li>
               <li>Certifique-se de que as regras de segurança do Firestore permitem as operações nas coleções 'users', 'turmas', 'disciplinas', 'provas' e 'studentGrades'.</li>
             </ul>
           </div>
