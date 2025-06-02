@@ -3,25 +3,12 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, Printer, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { StrawberryIcon } from '@/components/icons/StrawberryIcon'; // Importar o logo
-
-interface StudentData {
-  id: string;
-  matricula: string;
-  nomeCompleto: string;
-}
-
-interface TurmaData {
-    id: string;
-    nome: string;
-}
+import { StrawberryIcon } from '@/components/icons/StrawberryIcon';
+import { generateAttendanceHtml, GenerateAttendanceHtmlOutput } from '@/ai/flows/generate-attendance-html-flow';
 
 export default function AttendanceListPage() {
   const searchParams = useSearchParams();
@@ -29,60 +16,42 @@ export default function AttendanceListPage() {
   const { toast } = useToast();
   const turmaId = searchParams.get('turmaId');
 
-  const [students, setStudents] = useState<StudentData[]>([]);
-  const [turmaInfo, setTurmaInfo] = useState<TurmaData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [aiGeneratedOutput, setAiGeneratedOutput] = useState<GenerateAttendanceHtmlOutput | null>(null);
 
-  const fetchTurmaInfo = useCallback(async (id: string) => {
-    try {
-        const turmaDocRef = doc(db, "turmas", id);
-        const turmaDocSnap = await getDoc(turmaDocRef);
-        if (turmaDocSnap.exists()) {
-            setTurmaInfo({ id: turmaDocSnap.id, ...turmaDocSnap.data() } as TurmaData);
-        } else {
-            toast({ title: "Erro", description: "Turma não encontrada.", variant: "destructive" });
-            setTurmaInfo(null);
-        }
-    } catch (error) {
-        console.error("Error fetching turma info:", error);
-        toast({ title: "Erro ao buscar dados da turma", description: "Não foi possível carregar informações da turma.", variant: "destructive" });
-        setTurmaInfo(null);
-    }
-  }, [toast]);
-
-  const fetchStudents = useCallback(async (id: string) => {
-    try {
-      const q = query(collection(db, 'users'), where('turmaId', '==', id));
-      const querySnapshot = await getDocs(q);
-      const studentList = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        matricula: doc.data().matricula,
-        nomeCompleto: doc.data().nomeCompleto,
-      } as StudentData)).sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto));
-      setStudents(studentList);
-    } catch (error) {
-      console.error('Error fetching students:', error);
-      toast({ title: "Erro ao buscar alunos", description: "Não foi possível carregar a lista de alunos.", variant: "destructive" });
-      setStudents([]);
-    }
-  }, [toast]);
 
   useEffect(() => {
     if (turmaId) {
       setIsLoading(true);
-      Promise.all([fetchTurmaInfo(turmaId), fetchStudents(turmaId)]).finally(() => {
-        setIsLoading(false);
-      });
+      generateAttendanceHtml({ turmaId })
+        .then(output => {
+          setAiGeneratedOutput(output);
+          if (!output || !output.htmlContent.includes("<table")) {
+            toast({ title: "Aviso", description: "Conteúdo da lista de chamada pode não ter sido gerado corretamente pela IA.", variant: "default" });
+          }
+        })
+        .catch(error => {
+          console.error('Error generating attendance HTML with AI:', error);
+          toast({ title: "Erro ao Gerar Lista", description: "Não foi possível gerar o conteúdo da lista via IA.", variant: "destructive" });
+          setAiGeneratedOutput({
+            htmlContent: `<h2>Erro ao gerar lista de chamada</h2><p>Falha na comunicação com o serviço de IA.</p>`,
+            turmaName: "Desconhecida",
+            currentDate: new Date().toLocaleDateString('pt-BR')
+          });
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
     } else {
       toast({ title: "Erro de Navegação", description: "ID da turma não fornecido na URL.", variant: "destructive" });
       setIsLoading(false);
+      router.replace('/management'); // Redirect if no turmaId
     }
-  }, [turmaId, fetchTurmaInfo, fetchStudents, toast, router]);
+  }, [turmaId, toast, router]);
 
   const handlePrint = () => {
     setIsPrinting(true);
-    // A pequena espera pode ajudar o navegador a aplicar estilos de impressão antes de imprimir
     setTimeout(() => {
       window.print();
     }, 100); 
@@ -98,21 +67,20 @@ export default function AttendanceListPage() {
     };
   }, []);
 
-
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-lg text-foreground">Carregando lista de chamada...</p>
+        <p className="ml-4 text-lg text-foreground">Gerando lista de chamada com IA...</p>
       </div>
     );
   }
 
-  if (!turmaId || !turmaInfo) {
+  if (!turmaId || !aiGeneratedOutput) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4 text-center">
         <div>
-            <p className="text-xl text-destructive mb-4">Não foi possível carregar os dados da turma. Verifique se o ID da turma é válido.</p>
+            <p className="text-xl text-destructive mb-4">Não foi possível carregar os dados da turma ou gerar a lista.</p>
             <Button onClick={() => router.back()}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
             </Button>
@@ -121,27 +89,39 @@ export default function AttendanceListPage() {
     );
   }
   
-  const currentDate = new Date().toLocaleDateString('pt-BR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-
   return (
     <div className="container mx-auto py-8 px-4 print:p-0">
       <style jsx global>{`
         .print-only-logo {
-          display: none; /* Escondido por padrão */
+          display: none; 
         }
+        .ai-generated-table table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 10px;
+        }
+        .ai-generated-table th, .ai-generated-table td {
+          border: 1px solid #000;
+          padding: 6px; /* Ajustado para um padding melhor */
+          text-align: left;
+          vertical-align: middle;
+        }
+        .ai-generated-table th {
+          background-color: #f0f0f0;
+          font-weight: bold;
+        }
+        .ai-generated-table td:nth-child(3), /* Presença */
+        .ai-generated-table td:nth-child(4)  /* Assinatura */
+        {
+           height: 1cm; /* Altura para assinatura/presença */
+        }
+
+
         @media print {
           body {
             -webkit-print-color-adjust: exact;
             color-adjust: exact;
             background-color: #ffffff !important;
-          }
-          body * {
-            background-color: transparent !important;
-            color: #000000 !important;
           }
           .printable-area, .printable-area * {
             visibility: visible;
@@ -158,113 +138,82 @@ export default function AttendanceListPage() {
           .no-print {
             display: none !important;
           }
-          table {
+          
+          .ai-generated-table table {
             width: 100% !important;
             border-collapse: collapse !important;
-            font-size: 9pt; /* Reduzido para caber mais em A4 */
+            font-size: 9pt; 
           }
-          th, td {
+          .ai-generated-table th, .ai-generated-table td {
             border: 1px solid #000000 !important;
-            padding: 4px !important; /* Reduzido padding */
+            padding: 4px !important; 
             text-align: left !important;
             color: #000000 !important;
-            vertical-align: middle; /* Alinhar verticalmente ao meio */
+            vertical-align: middle; 
+            background-color: #ffffff !important; /* Forçar fundo branco para células */
           }
-          th {
+          .ai-generated-table th {
             background-color: #f0f0f0 !important;
             color: #000000 !important;
             font-weight: bold;
           }
-          tr {
+          .ai-generated-table tr {
             background-color: #ffffff !important;
-            page-break-inside: avoid; /* Tentar evitar quebra de linha dentro da linha */
+            page-break-inside: avoid; 
           }
           .print-logo-container {
              display: flex;
-             justify-content: flex-start; /* Alinha o logo à esquerda */
+             justify-content: flex-start; 
              align-items: center;
-             margin-bottom: 10px; /* Espaço abaixo do logo */
+             margin-bottom: 10px; 
           }
           .print-only-logo {
-            display: block !important; /* Mostra o logo na impressão */
-            width: 50px; /* Tamanho do logo */
+            display: block !important; 
+            width: 50px; 
             height: 50px;
+            fill: #E30B5D; /* Cor primária do tema Moranguinho */
           }
-          .print-header-text {
-            text-align: center; /* Centraliza o texto do cabeçalho principal */
+          .print-header-text-container {
+            text-align: center; 
             flex-grow: 1;
           }
-          .print-header-info {
-            font-size: 10pt;
+          .print-main-title {
+             font-size: 16pt; font-weight: bold; margin-bottom: 5px; color: #000000 !important;
           }
-          .print-card-header-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center; /* Centraliza o cabeçalho principal */
+          .print-sub-title {
+             font-size: 10pt; color: #000000 !important;
           }
-
+          
           @page {
             size: A4 portrait; 
-            margin: 12mm; /* Margens um pouco menores */
+            margin: 12mm; 
           }
         }
       `}</style>
 
     <div className="printable-area">
       <Card className="print:shadow-none print:border-none print:bg-white">
-        <CardHeader className="print:mb-4 print:text-black">
-          {/* Container para o logo e título - visível apenas na impressão */}
+        <CardHeader className="print:p-0 print:mb-2 print:text-black">
           <div className="print-logo-container">
-            <StrawberryIcon className="print-only-logo text-primary" data-ai-hint="strawberry logo" />
+            <StrawberryIcon className="print-only-logo" data-ai-hint="strawberry logo" />
+            {/* O título principal e subtítulos agora serão gerados pela IA e estarão no htmlContentFromAI */}
           </div>
-
-          <div className="print-card-header-content">
-            <CardTitle className="text-2xl md:text-3xl font-bold text-primary print:text-black print:text-xl print:text-center">
-                Lista de Chamada
-            </CardTitle>
-            <CardDescription className="text-md text-muted-foreground print:text-black print:text-sm print:text-center print-header-info">
-                Turma: {turmaInfo.nome} <br/>
-                Data: {currentDate}
-            </CardDescription>
-          </div>
-
-          {/* Botões - visíveis apenas na tela */}
+          
           <div className="mt-4 sm:mt-0 flex flex-col sm:flex-row gap-2 no-print absolute top-4 right-4">
               <Button variant="outline" onClick={() => router.back()} disabled={isPrinting}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
               </Button>
-              <Button onClick={handlePrint} disabled={isPrinting || students.length === 0}>
+              <Button onClick={handlePrint} disabled={isPrinting || !aiGeneratedOutput?.htmlContent.includes("<table")}>
                 <Printer className="mr-2 h-4 w-4" /> {isPrinting ? 'Imprimindo...' : 'Imprimir Lista'}
               </Button>
           </div>
         </CardHeader>
         <CardContent className="print:p-0">
-          {students.length > 0 ? (
-            <div className="overflow-x-auto">
-                <Table>
-                <TableHeader>
-                    <TableRow>
-                    <TableHead className="w-[100px] print:w-[18%]">Matrícula</TableHead>
-                    <TableHead className="print:w-[42%]">Nome Completo</TableHead>
-                    <TableHead className="w-[130px] text-center print:w-[15%] print:text-center">Presença</TableHead>
-                    <TableHead className="w-[180px] print:w-[25%]">Assinatura</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {students.map((student) => (
-                    <TableRow key={student.id}>
-                        <TableCell>{student.matricula}</TableCell>
-                        <TableCell>{student.nomeCompleto}</TableCell>
-                        <TableCell className="h-[28px] print:h-[1cm] text-center"></TableCell> {/* Altura da célula reduzida */}
-                        <TableCell className="h-[28px] print:h-[1cm]"></TableCell>
-                    </TableRow>
-                    ))}
-                </TableBody>
-                </Table>
-            </div>
+          {aiGeneratedOutput?.htmlContent ? (
+            <div className="ai-generated-table" dangerouslySetInnerHTML={{ __html: aiGeneratedOutput.htmlContent }} />
           ) : (
             <p className="text-center text-muted-foreground py-4 print:text-black">
-              Nenhum aluno encontrado para esta turma. Não é possível imprimir uma lista vazia.
+              Conteúdo da lista de chamada não disponível.
             </p>
           )}
         </CardContent>
@@ -273,4 +222,3 @@ export default function AttendanceListPage() {
     </div>
   );
 }
-
