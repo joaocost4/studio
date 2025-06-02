@@ -16,11 +16,11 @@ import {
   PackagePlus,
   Users, 
   Briefcase,
-  UserPlus // Added UserPlus
+  UserPlus
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
-import React, { useState } from "react"; // Added useState
+import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -94,6 +94,11 @@ export default function ManagementPage() {
         <CardContent className="p-6 space-y-6">
           <p className="text-lg text-foreground">
             Bem-vindo(a), <strong className="text-primary">{userProfile.role === USER_ROLES.ADMIN ? 'Administrador(a)' : 'Representante'} {userProfile.matricula}</strong>!
+            {isRepresentative && userProfile.turmaNome && (
+                <>
+                  {' '}(Turma: <strong className="text-primary">{userProfile.turmaNome}</strong>)
+                </>
+            )}
             Utilize as ferramentas abaixo para gerenciar informações.
           </p>
           
