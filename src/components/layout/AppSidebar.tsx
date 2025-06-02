@@ -9,14 +9,11 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Home, Calculator, Users, ShieldCheck, LogOut, Apple } from "lucide-react";
+import { Home, Users, ShieldCheck, LogOut, Apple, Settings } from "lucide-react"; // Added Settings icon
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { USER_ROLES } from "@/lib/constants";
@@ -28,7 +25,7 @@ interface NavItem {
   label: string;
   icon: React.ElementType;
   roles?: (typeof USER_ROLES)[keyof typeof USER_ROLES][];
-  subItems?: NavItem[];
+  // subItems are removed as Calculadora 1 and 2 are now top-level
 }
 
 export function AppSidebar() {
@@ -37,13 +34,8 @@ export function AppSidebar() {
 
   const navItems: NavItem[] = [
     { href: "/dashboard", label: "Dashboard", icon: Home },
-    { 
-      href: "/calculators", label: "Calculadoras", icon: Calculator,
-      subItems: [
-        { href: "/calculator1", label: "Calculadora Moranguinho", icon: StrawberryIcon },
-        { href: "/calculator2", label: "Calculadora Docinha", icon: Apple },
-      ]
-    },
+    { href: "/calculator1", label: "Calculadora 1", icon: StrawberryIcon },
+    { href: "/calculator2", label: "Calculadora 2", icon: Apple }, // Apple icon for Docinha theme
     { href: "/management", label: "Gestão", icon: Users, roles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] },
     { href: "/admin", label: "Testes Admin", icon: ShieldCheck, roles: [USER_ROLES.ADMIN] },
   ];
@@ -52,81 +44,43 @@ export function AppSidebar() {
     if (fullName && fullName.trim()) {
       const parts = fullName.trim().split(' ');
       if (parts.length > 1 && parts[0] && parts[parts.length - 1]) {
-        // Use first letter of first name and first letter of last name
         return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
       }
       if (parts.length === 1 && parts[0]) {
-        // Use first two letters of the single name
         return parts[0].substring(0, 2).toUpperCase();
       }
     }
     if (matricula) {
       return matricula.substring(0, 2).toUpperCase();
     }
-    return "CM"; // Fallback for Calculadora da Moranguinho or if no name/matricula
+    return "CM"; 
   };
   
-  const isActive = (href: string, isSubItem = false) => {
-    if (isSubItem) return pathname === href;
-    // For parent items, check if the current path starts with the item's href.
-    // Ensure dashboard (exact match) or other parent routes like /calculators correctly activate.
+  const isActive = (href: string) => {
+    // Exact match for dashboard, startsWith for others to highlight parent routes if needed (though not strictly necessary with current flat structure)
     if (href === "/dashboard") return pathname === href;
     return pathname.startsWith(href);
   };
 
-  const renderNavItems = (items: NavItem[], isSubMenu = false) => {
+  const renderNavItems = (items: NavItem[]) => {
     return items.filter(item => {
-        if (loading && !userProfile) return false; // Don't render if auth state is loading initially and no profile yet
-        if (!item.roles) return true; // No specific roles required
+        if (loading && !userProfile) return false; 
+        if (!item.roles) return true; 
         return userProfile && item.roles.includes(userProfile.role);
       }).map((item) => (
         <SidebarMenuItem key={item.label}>
-          {item.subItems ? (
-            <>
-              <SidebarMenuButton
-                asChild={!isSubMenu}
-                className="font-medium"
-                isActive={isActive(item.href)}
-                // @ts-ignore 
-                variant={isActive(item.href) ? "secondary" : "ghost"} 
-              >
-                 <Link href={item.href} className="flex items-center w-full">
-                    <item.icon className="mr-2 h-5 w-5" />
-                    <span>{item.label}</span>
-                 </Link>
-              </SidebarMenuButton>
-              <SidebarMenuSub>
-                {item.subItems.map(subItem => (
-                   <SidebarMenuSubItem key={subItem.label}>
-                    <SidebarMenuSubButton 
-                        asChild
-                        // @ts-ignore
-                        variant={isActive(subItem.href, true) ? "secondary" : "ghost"}
-                        isActive={isActive(subItem.href, true)}
-                    >
-                      <Link href={subItem.href}>
-                        <subItem.icon className="mr-2 h-4 w-4" />
-                        <span>{subItem.label}</span>
-                      </Link>
-                    </SidebarMenuSubButton>
-                  </SidebarMenuSubItem>
-                ))}
-              </SidebarMenuSub>
-            </>
-          ) : (
-            <SidebarMenuButton 
-                asChild={!isSubMenu}
-                className="font-medium"
-                isActive={isActive(item.href)}
-                // @ts-ignore
-                variant={isActive(item.href) ? "secondary" : "ghost"}
-            >
-              <Link href={item.href}>
-                <item.icon className="mr-2 h-5 w-5" />
-                <span>{item.label}</span>
-              </Link>
-            </SidebarMenuButton>
-          )}
+          <SidebarMenuButton 
+              asChild
+              className="font-medium"
+              isActive={isActive(item.href)}
+              // @ts-ignore 
+              variant={isActive(item.href) ? "secondary" : "ghost"}
+          >
+            <Link href={item.href}>
+              <item.icon className="mr-2 h-5 w-5" />
+              <span>{item.label}</span>
+            </Link>
+          </SidebarMenuButton>
         </SidebarMenuItem>
       ));
   };
@@ -155,13 +109,13 @@ export function AppSidebar() {
         {userProfile && (
           <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
             <Avatar className="h-10 w-10 border-2 border-sidebar-primary">
-              <AvatarImage src={userProfile.email ? `https://avatar.vercel.sh/${userProfile.email}.png` : undefined} alt={userProfile.nomeCompleto || userProfile.matricula} data-ai-hint="user avatar" />
+              <AvatarImage src={userProfile.email ? `https://avatar.vercel.sh/${userProfile.email}.png` : undefined} alt={userProfile.nomeCompleto || userProfile.matricula || "Usuário"} data-ai-hint="user avatar" />
               <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">
                 {getInitials(userProfile.nomeCompleto, userProfile.matricula)}
               </AvatarFallback>
             </Avatar>
             <div className="group-data-[collapsible=icon]:hidden overflow-hidden">
-              <p className="text-sm font-semibold text-sidebar-foreground truncate" title={userProfile.nomeCompleto || userProfile.matricula}>
+              <p className="text-sm font-semibold text-sidebar-foreground truncate" title={userProfile.nomeCompleto || userProfile.matricula || "Usuário"}>
                 {userProfile.nomeCompleto || userProfile.matricula}
               </p>
               <p className="text-xs text-sidebar-foreground/70 truncate">
