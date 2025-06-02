@@ -16,7 +16,8 @@ import {
   PackagePlus,
   Users, 
   Briefcase,
-  UserPlus
+  UserPlus,
+  FlaskConical // Added for Teste button
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
@@ -67,7 +68,10 @@ export default function ManagementPage() {
       setStudentMatriculaToAdd("");
     }
      else {
-      alert(`Ação de gestão "${action}" executada! (Simulação)`);
+      toast({
+        title: "Ação Simulada",
+        description: `Ação de gestão "${action}" executada! (Simulação)`,
+      });
     }
   };
 
@@ -119,7 +123,7 @@ export default function ManagementPage() {
               <CalendarDays className="mr-2 h-5 w-5" /> Calendário Acadêmico
             </Button>
 
-            {/* Botão Adicionar Aluno à Turma para Representantes - Movido para cá */}
+            {/* Botão Adicionar Aluno à Turma para Representantes */}
             {canAddStudentToTurma && (
               <Dialog open={isAddStudentToTurmaDialogOpen} onOpenChange={(isOpen) => {
                 setIsAddStudentToTurmaDialogOpen(isOpen);
@@ -171,6 +175,9 @@ export default function ManagementPage() {
 
             <Button variant="outline" onClick={() => handleManagementAction("Painel de Desempenho da Turma")} className="w-full">
               <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma
+            </Button>
+            <Button variant="outline" onClick={() => handleManagementAction("Teste")} className="w-full">
+              <FlaskConical className="mr-2 h-5 w-5" /> Teste
             </Button>
              <Button variant="default" onClick={() => handleManagementAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
               <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
