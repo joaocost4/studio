@@ -16,6 +16,7 @@ import { db } from "@/lib/firebase";
 import { Loader2, UploadCloud, AlertTriangle, CheckCircle, Info, ShieldAlert, Save, FileUp } from "lucide-react";
 import { ProcessGradesInput, processPastedGrades, ProcessGradesOutput, ProcessedGradeItem } from "@/ai/flows/process-grades-flow";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox"; // Import Checkbox
 
 interface TurmaData {
   id: string;
@@ -61,6 +62,8 @@ export default function LancarNotasPage() {
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [isSavingGrades, setIsSavingGrades] = useState(false);
   const [processingResult, setProcessingResult] = useState<ProcessGradesOutput | null>(null);
+  const [forceSaveOverride, setForceSaveOverride] = useState<Record<number, boolean>>({});
+
 
   const [loadingTurmas, setLoadingTurmas] = useState(false);
   const [loadingDisciplinas, setLoadingDisciplinas] = useState(false);
@@ -85,14 +88,19 @@ export default function LancarNotasPage() {
     else if (userProfile?.turmaId) setSelectedTurmaId(userProfile.turmaId);
   }, [isAdmin, fetchActiveTurmas, userProfile?.turmaId]);
 
+  const resetDependentStates = () => {
+    setDisciplinas([]);
+    setSelectedDisciplinaId(undefined);
+    setProvas([]);
+    setSelectedProvaId(undefined);
+    setProcessingResult(null);
+    setForceSaveOverride({});
+  };
+
   useEffect(() => {
     const fetchDisciplinas = async (turmaId: string) => {
       setLoadingDisciplinas(true);
-      setDisciplinas([]);
-      setSelectedDisciplinaId(undefined);
-      setProvas([]);
-      setSelectedProvaId(undefined);
-      setProcessingResult(null);
+      resetDependentStates();
       try {
         const discQuery = query(collection(db, "disciplinas"), where("turmaId", "==", turmaId));
         const discSnapshot = await getDocs(discQuery);
@@ -106,6 +114,7 @@ export default function LancarNotasPage() {
       }
     };
     if (selectedTurmaId) fetchDisciplinas(selectedTurmaId);
+    else resetDependentStates();
   }, [selectedTurmaId, toast]);
 
   useEffect(() => {
@@ -114,14 +123,14 @@ export default function LancarNotasPage() {
       setProvas([]);
       setSelectedProvaId(undefined);
       setProcessingResult(null);
+      setForceSaveOverride({});
       try {
         const provasQuery = query(collection(db, "provas"), 
           where("disciplinaId", "==", disciplinaId),
-          where("turmaId", "==", selectedTurmaId) // Ensure prova is for the correct turma
+          where("turmaId", "==", selectedTurmaId) 
         );
         const provasSnapshot = await getDocs(provasQuery);
         const provasList = provasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProvaData));
-        // Sort by date, most recent first, then by name
         provasList.sort((a, b) => {
             const dateComparison = b.data.toDate().getTime() - a.data.toDate().getTime();
             if (dateComparison !== 0) return dateComparison;
@@ -135,6 +144,12 @@ export default function LancarNotasPage() {
       }
     };
     if (selectedDisciplinaId && selectedTurmaId) fetchProvas(selectedDisciplinaId);
+    else {
+        setProvas([]);
+        setSelectedProvaId(undefined);
+        setProcessingResult(null);
+        setForceSaveOverride({});
+    }
   }, [selectedDisciplinaId, selectedTurmaId, toast]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,7 +170,6 @@ export default function LancarNotasPage() {
       };
       reader.readAsText(file);
     }
-    // Reset file input value to allow selecting the same file again
     if (event.target) {
       event.target.value = "";
     }
@@ -168,6 +182,7 @@ export default function LancarNotasPage() {
     }
     setIsProcessingAI(true);
     setProcessingResult(null);
+    setForceSaveOverride({});
     try {
       const input: ProcessGradesInput = {
         turmaId: selectedTurmaId,
@@ -179,9 +194,9 @@ export default function LancarNotasPage() {
       setProcessingResult(result);
       if (result.summary.successfullyParsed === 0 && result.summary.totalLines > 0) {
          toast({ title: "Processamento IA", description: "Nenhuma nota pôde ser extraída do texto. Verifique o formato.", variant: "destructive" });
-      } else if (result.summary.validEntries === 0 && result.summary.successfullyParsed > 0) {
+      } else if (result.summary.validEntries === 0 && result.summary.successfullyParsed > 0 && !result.processedEntries.some(e => e.status === 'invalid_matricula')) {
          toast({ title: "Processamento IA Concluído", description: "Nenhuma das notas processadas é válida (matrícula ou nota incorreta).", variant: "destructive" });
-      } else {
+      } else if (result.summary.successfullyParsed > 0){
         toast({ title: "Processamento IA Concluído", description: `Verifique as ${result.summary.successfullyParsed} notas processadas abaixo.` });
       }
     } catch (error: any) {
@@ -191,14 +206,23 @@ export default function LancarNotasPage() {
       setIsProcessingAI(false);
     }
   };
+
+  const handleToggleForceSave = (entryIndex: number, shouldForceSave: boolean) => {
+    setForceSaveOverride(prev => ({ ...prev, [entryIndex]: shouldForceSave }));
+  };
   
   const handleSaveChanges = async () => {
-    if (!processingResult || processingResult.summary.validEntries === 0 || !userProfile) {
-        toast({ title: "Nenhuma Nota Válida", description: "Não há notas válidas para salvar ou o resultado do processamento não está disponível.", variant: "destructive" });
+    if (!processingResult || !userProfile || !selectedTurmaId || !selectedDisciplinaId || !selectedProvaId) {
+        toast({ title: "Dados Incompletos", description: "Informações necessárias para salvar as notas estão faltando.", variant: "destructive"});
         return;
     }
-    if (!selectedTurmaId || !selectedDisciplinaId || !selectedProvaId) {
-        toast({ title: "Contexto Inválido", description: "Turma, disciplina ou prova não selecionada.", variant: "destructive"});
+
+    const entriesToSave = processingResult.processedEntries.filter((entry, index) => 
+        (entry.status === 'valid' || (entry.status === 'invalid_matricula' && forceSaveOverride[index])) && typeof entry.gradeNumeric === 'number'
+    );
+
+    if (entriesToSave.length === 0) {
+        toast({ title: "Nenhuma Nota para Salvar", description: "Não há notas válidas ou selecionadas para forçar o salvamento.", variant: "default" });
         return;
     }
 
@@ -207,30 +231,101 @@ export default function LancarNotasPage() {
         const batch = writeBatch(db);
         let savedCount = 0;
 
-        processingResult.processedEntries.forEach(entry => {
-            if (entry.status === 'valid' && entry.studentUid && typeof entry.gradeNumeric === 'number') {
-                const gradeDocRef = doc(db, "studentGrades", `${entry.studentUid}_${selectedProvaId}`);
-                batch.set(gradeDocRef, {
-                    studentUid: entry.studentUid,
+        entriesToSave.forEach((entry, originalIndex) => { // originalIndex might not be needed if entriesToSave is filtered
+            // We need to map back to original index if forceSaveOverride keys are based on original processingResult.processedEntries
+            // However, if entriesToSave only contains the items to be saved, we can use its own index for logging
+            // But for `forceSaveOverride` we need the original index if that's how it was keyed.
+            // The current implementation of `entriesToSave` means the original index is lost.
+            // Let's iterate original and check conditions:
+
+            processingResult.processedEntries.forEach((originalEntry, index) => {
+                const isOverriddenInvalidMatricula = originalEntry.status === 'invalid_matricula' && forceSaveOverride[index];
+                const isValidEntry = originalEntry.status === 'valid';
+
+                if ((isValidEntry || isOverriddenInvalidMatricula) && typeof originalEntry.gradeNumeric === 'number') {
+                    let gradeDocRef;
+                    const gradeData: any = {
+                        turmaId: selectedTurmaId,
+                        disciplinaId: selectedDisciplinaId,
+                        provaId: selectedProvaId,
+                        grade: originalEntry.gradeNumeric,
+                        submittedAt: serverTimestamp(),
+                        submittedByUid: userProfile.uid,
+                        studentMatricula: originalEntry.matricula,
+                    };
+
+                    if (isValidEntry && originalEntry.studentUid) {
+                        gradeDocRef = doc(db, "studentGrades", `${originalEntry.studentUid}_${selectedProvaId}`);
+                        gradeData.studentUid = originalEntry.studentUid;
+                        gradeData.studentNameSnapshot = originalEntry.studentName;
+                        gradeData.isUnverifiedMatricula = false;
+                    } else if (isOverriddenInvalidMatricula) {
+                        gradeDocRef = doc(collection(db, "studentGrades")); // Auto-ID
+                        gradeData.studentUid = null; 
+                        gradeData.studentNameSnapshot = null;
+                        gradeData.isUnverifiedMatricula = true;
+                    } else {
+                        return; 
+                    }
+                    
+                    // Check if we are about to add this entry (it might be processed multiple times by outer loop)
+                    // This part of the logic needs to ensure batch.set is called once per intended save.
+                    // The `entriesToSave` filter handles this, so the inner loop might be redundant or needs care.
+                    // Let's simplify: Iterate `processingResult.processedEntries` directly.
+
+                    // This logic is executed inside the forEach for entriesToSave
+                    // The above loop is the correct one. This is re-evaluation.
+
+                }
+            }); // End of re-evaluation forEach. The actual logic should be simpler.
+
+        }); // End of entriesToSave.forEach
+
+        // Corrected loop for saving:
+        processingResult.processedEntries.forEach((entry, index) => {
+            const isOverriddenInvalidMatricula = entry.status === 'invalid_matricula' && forceSaveOverride[index];
+            const isValidEntry = entry.status === 'valid';
+
+            if ((isValidEntry || isOverriddenInvalidMatricula) && typeof entry.gradeNumeric === 'number') {
+                 let gradeDocRef;
+                 const gradeData: any = {
                     turmaId: selectedTurmaId,
                     disciplinaId: selectedDisciplinaId,
                     provaId: selectedProvaId,
                     grade: entry.gradeNumeric,
                     submittedAt: serverTimestamp(),
                     submittedByUid: userProfile.uid,
-                    studentMatricula: entry.matricula, 
-                    studentNameSnapshot: entry.studentName, 
-                });
+                    studentMatricula: entry.matricula,
+                };
+
+                if (isValidEntry && entry.studentUid) {
+                    gradeDocRef = doc(db, "studentGrades", `${entry.studentUid}_${selectedProvaId}`);
+                    gradeData.studentUid = entry.studentUid;
+                    gradeData.studentNameSnapshot = entry.studentName;
+                    gradeData.isUnverifiedMatricula = false;
+                } else if (isOverriddenInvalidMatricula) {
+                    gradeDocRef = doc(collection(db, "studentGrades")); 
+                    gradeData.studentUid = null; 
+                    gradeData.studentNameSnapshot = null;
+                    gradeData.isUnverifiedMatricula = true;
+                } else {
+                    // This case should not be reached due to the outer if condition
+                    return; 
+                }
+                batch.set(gradeDocRef, gradeData);
                 savedCount++;
             }
         });
+
 
         if (savedCount > 0) {
             await batch.commit();
             toast({ title: "Notas Salvas!", description: `${savedCount} notas foram salvas com sucesso no Firestore.` });
             setProcessingResult(null); 
             setGradesPasted(""); 
+            setForceSaveOverride({});
         } else {
+             // This case should be caught by the initial entriesToSave.length === 0 check
             toast({ title: "Nenhuma Nota para Salvar", description: "Nenhuma das notas processadas estava em um estado válido para ser salva.", variant: "default" });
         }
 
@@ -242,12 +337,12 @@ export default function LancarNotasPage() {
     }
   };
 
+  const savableEntriesCount = processingResult?.processedEntries.filter(
+    (entry, index) => (entry.status === 'valid' || (entry.status === 'invalid_matricula' && forceSaveOverride[index])) && typeof entry.gradeNumeric === 'number'
+  ).length ?? 0;
+
 
   if (!userProfile) return <div className="flex justify-center items-center min-h-[200px]"><Loader2 className="h-8 w-8 animate-spin"/></div>;
-
-  const turmaNome = isAdmin 
-    ? activeTurmas.find(t => t.id === selectedTurmaId)?.nome 
-    : userProfile?.turmaNome;
 
   return (
     <div className="container mx-auto py-8 px-4 space-y-6">
@@ -261,7 +356,6 @@ export default function LancarNotasPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Seletores */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             {isAdmin && (
               <div>
@@ -295,7 +389,7 @@ export default function LancarNotasPage() {
             </div>
             <div>
               <Label htmlFor="prova-select">Prova</Label>
-              <Select value={selectedProvaId} onValueChange={setSelectedProvaId} disabled={!selectedDisciplinaId || loadingProvas || provas.length === 0}>
+              <Select value={selectedProvaId} onValueChange={(value) => { setSelectedProvaId(value); setProcessingResult(null); setForceSaveOverride({}); }} disabled={!selectedDisciplinaId || loadingProvas || provas.length === 0}>
                 <SelectTrigger id="prova-select">
                   <SelectValue placeholder={loadingProvas ? "Carregando..." : (selectedDisciplinaId && provas.length === 0 && !loadingProvas ? "Nenhuma prova" : "Selecione prova")} />
                 </SelectTrigger>
@@ -306,14 +400,13 @@ export default function LancarNotasPage() {
             </div>
           </div>
 
-          {/* Textarea e Botão de Processar */}
           <div>
             <Label htmlFor="grades-paste">Cole as Notas Aqui (Matrícula: Nota ou Matrícula Nota) ou Extraia de um Arquivo</Label>
             <Textarea
               id="grades-paste"
               value={gradesPasted}
               onChange={(e) => setGradesPasted(e.target.value)}
-              placeholder={"Exemplo:\n12345: 9.5\n67890 8,0\nABC01   7.2"}
+              placeholder={"Exemplo:\n12345: 9.5\n67890 8,0\nABC01   7.2\nXYZ99 6.0 (Matrícula não existente no sistema)"}
               rows={8}
               className="mt-1"
               disabled={!selectedProvaId}
@@ -347,14 +440,13 @@ export default function LancarNotasPage() {
         </CardContent>
       </Card>
 
-      {/* Resultados do Processamento */}
       {processingResult && (
         <Card className="shadow-md">
           <CardHeader>
             <CardTitle className="flex items-center">
                 {processingResult.summary.validEntries > 0 && processingResult.summary.validEntries === processingResult.summary.successfullyParsed ? 
                     <CheckCircle className="mr-2 h-6 w-6 text-green-500" /> :
-                    processingResult.summary.successfullyParsed > 0 ?
+                    processingResult.summary.successfullyParsed > 0 || savableEntriesCount > 0 ?
                     <Info className="mr-2 h-6 w-6 text-blue-500" /> :
                     <AlertTriangle className="mr-2 h-6 w-6 text-destructive" />
                 }
@@ -362,11 +454,11 @@ export default function LancarNotasPage() {
             </CardTitle>
             <CardDescription>
               Total de Linhas: {processingResult.summary.totalLines} | 
-              Extraídas com Sucesso: {processingResult.summary.successfullyParsed} | 
-              Entradas Válidas: <span className="font-semibold text-green-600">{processingResult.summary.validEntries}</span> | 
-              Matrículas Inválidas: <span className="font-semibold text-red-600">{processingResult.summary.invalidMatricula}</span> | 
-              Notas com Formato Inválido: <span className="font-semibold text-orange-600">{processingResult.summary.invalidGradeFormat}</span> |
-              Notas Fora do Intervalo: <span className="font-semibold text-orange-500">{processingResult.summary.invalidGradeValue}</span>
+              Extraídas: {processingResult.summary.successfullyParsed} | 
+              Válidas (Matrícula OK): <span className="font-semibold text-green-600">{processingResult.summary.validEntries}</span> | 
+              Matr. Inválida: <span className="font-semibold text-red-600">{processingResult.summary.invalidMatricula}</span> | 
+              Formato Nota Inválido: <span className="font-semibold text-orange-600">{processingResult.summary.invalidGradeFormat}</span> |
+              Nota Fora Intervalo: <span className="font-semibold text-orange-500">{processingResult.summary.invalidGradeValue}</span>
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -380,29 +472,35 @@ export default function LancarNotasPage() {
                     <TableHead>Nota Numérica</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Mensagem</TableHead>
+                    <TableHead className="text-center">Forçar Salvar?</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {processingResult.processedEntries.map((entry, index) => (
-                    <TableRow key={index} className={
+                    <TableRow 
+                        key={entry.matricula + '-' + index} // Ensure unique key if matriculas can repeat in input
+                        className={
                         entry.status === 'valid' ? 'bg-green-500/10 hover:bg-green-500/20' : 
-                       (entry.status === 'invalid_matricula' || entry.status === 'invalid_grade_value') ? 'bg-red-500/10 hover:bg-red-500/20' :
+                       (entry.status === 'invalid_matricula' && !forceSaveOverride[index]) ? 'bg-red-500/10 hover:bg-red-500/20' :
+                       (entry.status === 'invalid_matricula' && forceSaveOverride[index]) ? 'bg-yellow-500/10 hover:bg-yellow-500/20' :
                        entry.status === 'invalid_grade_format' ? 'bg-orange-500/10 hover:bg-orange-500/20' : ''
                     }>
                       <TableCell>{entry.matricula}</TableCell>
                       <TableCell>{entry.gradeRaw}</TableCell>
                       <TableCell>{entry.studentName || "---"}</TableCell>
-                      <TableCell>{entry.gradeNumeric?.toFixed(2) ?? "---"}</TableCell>
+                      <TableCell>{typeof entry.gradeNumeric === 'number' ? entry.gradeNumeric.toFixed(2) : "---"}</TableCell>
                       <TableCell>
                         <span className={`px-2 py-1 text-xs rounded-full ${
                           entry.status === 'valid' ? 'bg-green-200 text-green-800' :
-                          entry.status === 'invalid_matricula' ? 'bg-red-200 text-red-800' :
+                          entry.status === 'invalid_matricula' && !forceSaveOverride[index] ? 'bg-red-200 text-red-800' :
+                          entry.status === 'invalid_matricula' && forceSaveOverride[index] ? 'bg-yellow-200 text-yellow-800' :
                           entry.status === 'invalid_grade_format' ? 'bg-orange-200 text-orange-800' :
                           entry.status === 'invalid_grade_value' ? 'bg-yellow-200 text-yellow-800' :
                           'bg-gray-200 text-gray-800'
                         }`}>
                           {entry.status === 'valid' && "Válido"}
-                          {entry.status === 'invalid_matricula' && "Matrícula Inválida"}
+                          {entry.status === 'invalid_matricula' && !forceSaveOverride[index] && "Matrícula Inválida"}
+                          {entry.status === 'invalid_matricula' && forceSaveOverride[index] && "Matr. Inválida (Salvar Mesmo Assim)"}
                           {entry.status === 'invalid_grade_format' && "Formato de Nota Inválido"}
                           {entry.status === 'invalid_grade_value' && "Nota Fora do Intervalo"}
                           {entry.status === 'parsed' && "Apenas Extraído"}
@@ -410,22 +508,34 @@ export default function LancarNotasPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-xs">{entry.message || "---"}</TableCell>
+                      <TableCell className="text-center">
+                        {entry.status === 'invalid_matricula' && typeof entry.gradeNumeric === 'number' && (
+                          <Checkbox
+                            id={`force-save-${index}`}
+                            checked={!!forceSaveOverride[index]}
+                            onCheckedChange={(checked) => handleToggleForceSave(index, !!checked)}
+                          />
+                        )}
+                         {entry.status === 'invalid_matricula' && typeof entry.gradeNumeric !== 'number' && (
+                            <span className="text-xs text-muted-foreground italic">Nota inválida</span>
+                         )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </div>
-            {processingResult.summary.validEntries > 0 && (
+            {savableEntriesCount > 0 && (
               <Button onClick={handleSaveChanges} disabled={isSavingGrades} className="mt-6 w-full md:w-auto">
                 {isSavingGrades ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="mr-2 h-5 w-5" />}
-                {isSavingGrades ? "Salvando Notas..." : `Confirmar e Salvar ${processingResult.summary.validEntries} Notas Válidas`}
+                {isSavingGrades ? "Salvando Notas..." : `Confirmar e Salvar ${savableEntriesCount} Nota(s)`}
               </Button>
             )}
           </CardContent>
            <CardFooter>
                 <p className="text-xs text-muted-foreground">
                     <ShieldAlert className="inline-block mr-1 h-3 w-3" />
-                    Verifique cuidadosamente as notas processadas antes de salvar. As notas salvas sobrescreverão quaisquer notas anteriores para o mesmo aluno nesta prova.
+                    Verifique cuidadosamente as notas processadas antes de salvar. Notas para matrículas não encontradas (se selecionadas para salvar) serão armazenadas sem vínculo direto a um usuário existente.
                 </p>
             </CardFooter>
         </Card>
@@ -434,3 +544,5 @@ export default function LancarNotasPage() {
   );
 }
 
+
+    
