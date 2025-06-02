@@ -37,7 +37,7 @@ const GradesParserOutputSchema = z.object({
 });
 
 // Input for the overall flow / exported function
-export const ProcessGradesInputSchema = z.object({
+const ProcessGradesInputSchema = z.object({
   turmaId: z.string().describe("The ID of the class/turma."),
   disciplinaId: z.string().describe("The ID of the subject/disciplina."),
   provaId: z.string().describe("The ID of the exam/prova."),
@@ -48,18 +48,16 @@ export const ProcessGradesInputSchema = z.object({
     }),
     z.object({
       type: z.literal("file"),
-      fileName: z.string(),
-      mimeType: z.string(),
-      dataUri: z.string().describe("File content as a data URI. Expected format: 'data:<mimetype>;base64,<encoded_data>'."),
+      fileName: z.string().min(1, {message: "Nome do arquivo é obrigatório."}),
+      mimeType: z.string().min(1, {message: "Tipo MIME do arquivo é obrigatório."}),
+      dataUri: z.string().min(1, {message: "Conteúdo do arquivo (data URI) é obrigatório."}).describe("File content as a data URI. Expected format: 'data:<mimetype>;base64,<encoded_data>'."),
     }),
   ]).describe("The source of grades, either pasted text or an uploaded file."),
-}).refine(data => (data.source.type === 'text' && data.source.content) || (data.source.type === 'file' && data.source.dataUri), {
-  message: "Either pasted grades text or a grade file must be provided.",
 });
 export type ProcessGradesInput = z.infer<typeof ProcessGradesInputSchema>;
 
 
-export const ProcessedGradeItemSchema = z.object({
+const ProcessedGradeItemSchema = z.object({
   originalLine: z.string().optional().describe("The original line from the input text if available (only for text source)."),
   matricula: z.string().describe("The student's matricula (ID number)."),
   gradeRaw: z.string().describe("The raw grade string as parsed from the input."),
@@ -71,7 +69,7 @@ export const ProcessedGradeItemSchema = z.object({
 });
 export type ProcessedGradeItem = z.infer<typeof ProcessedGradeItemSchema>;
 
-export const ProcessGradesOutputSchema = z.object({
+const ProcessGradesOutputSchema = z.object({
   processedEntries: z.array(ProcessedGradeItemSchema).describe("An array of processed grade entries."),
   summary: z.object({
     totalSourceEntries: z.number().describe("Number of lines if text input, or number of successfully parsed entries if file input."),
@@ -126,28 +124,25 @@ const processGradesFlow = ai.defineFlow(
   },
   async (input: ProcessGradesInput) => {
     let parserPromptInputValue: z.infer<typeof GradesParserPromptInputSchema>;
-    let sourceDescriptionForSummary = "";
-
+    
     if (input.source.type === 'file') {
       parserPromptInputValue = {
         inputType: 'file',
         fileDataUri: input.source.dataUri,
         fileMimeType: input.source.mimeType,
       };
-      sourceDescriptionForSummary = `Arquivo: ${input.source.fileName}`;
-    } else {
+    } else { // type === 'text'
       parserPromptInputValue = {
         inputType: 'text',
         textData: input.source.content,
       };
-      sourceDescriptionForSummary = `Texto Colado`;
     }
 
     const { output: parserOutput } = await gradesParserPrompt(parserPromptInputValue);
 
     const finalProcessedEntries: ProcessedGradeItem[] = [];
     let summary = {
-      totalSourceEntries: 0, // Will be updated based on successful parsing or text lines
+      totalSourceEntries: 0, 
       successfullyParsed: 0,
       validEntries: 0,
       invalidMatricula: 0,
@@ -157,11 +152,10 @@ const processGradesFlow = ai.defineFlow(
 
     if (!parserOutput?.parsedEntries || parserOutput.parsedEntries.length === 0) {
       if (input.source.type === 'text') {
-        // Fallback for TEXT input if LLM fails or returns no entries
         const lines = input.source.content.split('\n').filter(line => line.trim() !== '');
         summary.totalSourceEntries = lines.length;
         lines.forEach(line => {
-            const parts = line.trim().split(/[\s:]+/); // Basic split, might need refinement
+            const parts = line.trim().split(/[\s:]+/); 
             let matricula = "N/A";
             let gradeRaw = "";
 
@@ -175,7 +169,7 @@ const processGradesFlow = ai.defineFlow(
                     status: 'parsed',
                  });
                  summary.successfullyParsed++;
-            } else if (parts.length === 1 && parts[0].length > 0) { // If only one part, assume it's matricula and grade is missing or error
+            } else if (parts.length === 1 && parts[0].length > 0) { 
                  finalProcessedEntries.push({
                     originalLine: line,
                     matricula: parts[0],
@@ -183,10 +177,10 @@ const processGradesFlow = ai.defineFlow(
                     status: 'unknown_error',
                     message: 'Não foi possível extrair matrícula e nota da linha (fallback). Linha curta.',
                 });
-            } else { // Line is effectively empty or unparseable by simple split
+            } else { 
                  finalProcessedEntries.push({
                     originalLine: line,
-                    matricula: line, // Store full line as matricula if completely unparseable
+                    matricula: line, 
                     gradeRaw: "",
                     status: 'unknown_error',
                     message: 'Não foi possível extrair matrícula e nota da linha (fallback).',
@@ -194,12 +188,11 @@ const processGradesFlow = ai.defineFlow(
             }
         });
       } else {
-        // No reliable fallback for file if LLM parsing fails to produce entries
         summary.totalSourceEntries = 0; 
       }
     } else {
         summary.successfullyParsed = parserOutput.parsedEntries.length;
-        summary.totalSourceEntries = parserOutput.parsedEntries.length; // Number of items LLM identified
+        summary.totalSourceEntries = parserOutput.parsedEntries.length; 
         parserOutput.parsedEntries.forEach(entry => {
              finalProcessedEntries.push({
                 matricula: entry.matricula,
@@ -217,7 +210,6 @@ const processGradesFlow = ai.defineFlow(
       const entry = finalProcessedEntries[i];
       if (entry.status !== 'parsed') continue;
 
-      // Ensure matricula and gradeRaw are strings before further processing
       entry.matricula = String(entry.matricula || "").trim();
       entry.gradeRaw = String(entry.gradeRaw || "").trim();
 
@@ -255,8 +247,7 @@ const processGradesFlow = ai.defineFlow(
 
       try {
         const usersRef = collection(db, 'users');
-        // Ensure matricula is a non-empty string before querying
-        if (!entry.matricula) {
+        if (!entry.matricula) { // Redundant due to earlier check, but safe
             entry.status = 'invalid_matricula';
             entry.message = `Matrícula está vazia.`;
             summary.invalidMatricula++;
@@ -291,3 +282,4 @@ export async function processPastedGrades(input: ProcessGradesInput): Promise<Pr
   return processGradesFlow(input);
 }
 
+    
