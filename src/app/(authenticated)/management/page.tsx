@@ -34,7 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { collection, query, where, getDocs, doc, updateDoc, Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, updateDoc, Timestamp, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -45,6 +45,15 @@ interface TurmaData {
   nome: string;
   ativa: boolean;
   createdAt?: Timestamp;
+}
+
+interface DisciplinaData {
+  id?: string; // Firestore will generate this
+  nome: string;
+  prioridade: number;
+  turmaId: string;
+  // turmaNome?: string; // Optional: Can be denormalized for easier display, or fetched via turmaId
+  createdAt: Timestamp;
 }
 
 export default function ManagementPage() {
@@ -182,14 +191,13 @@ export default function ManagementPage() {
     }
   };
 
-  const handleCadastrarDisciplina = () => {
+  const handleCadastrarDisciplina = async () => {
     if (!newDisciplinaName.trim()) {
       toast({ title: "Nome da Disciplina Obrigatório", description: "Por favor, insira um nome para a disciplina.", variant: "destructive" });
       return;
     }
 
     let targetTurmaIdForDisciplina: string | undefined = undefined;
-    let targetTurmaNameForDisciplina: string | undefined = undefined;
 
     if (isAdmin) {
       if (!adminSelectedTurmaIdForDisciplina) {
@@ -197,31 +205,44 @@ export default function ManagementPage() {
         return;
       }
       targetTurmaIdForDisciplina = adminSelectedTurmaIdForDisciplina;
-      targetTurmaNameForDisciplina = activeTurmas.find(t => t.id === targetTurmaIdForDisciplina)?.nome || "Turma Desconhecida";
-    } else if (isRepresentative && userProfile.turmaId && userProfile.turmaNome) {
+    } else if (isRepresentative && userProfile.turmaId) {
       targetTurmaIdForDisciplina = userProfile.turmaId;
-      targetTurmaNameForDisciplina = userProfile.turmaNome;
     } else {
         toast({ title: "Erro de Configuração", description: "Não foi possível determinar a turma para a disciplina.", variant: "destructive" });
         return;
     }
     
     setIsProcessingDisciplina(true);
-    // Simulate saving
-    handleSimulatedAction("Cadastrar Disciplina", {
-      nome: newDisciplinaName,
-      prioridade: newDisciplinaPrioridade[0],
-      turmaId: targetTurmaIdForDisciplina,
-      turmaNome: targetTurmaNameForDisciplina,
-    });
+    try {
+      const disciplinaData: Omit<DisciplinaData, 'id'> = {
+        nome: newDisciplinaName.trim(),
+        prioridade: newDisciplinaPrioridade[0],
+        turmaId: targetTurmaIdForDisciplina,
+        createdAt: serverTimestamp() as Timestamp,
+      };
 
-    setTimeout(() => { // Simulate async operation
-        setIsCadastrarDisciplinaDialogOpen(false);
-        setNewDisciplinaName("");
-        setNewDisciplinaPrioridade([3]);
-        if (isAdmin) setAdminSelectedTurmaIdForDisciplina(undefined);
-        setIsProcessingDisciplina(false);
-    }, 1000);
+      await addDoc(collection(db, "disciplinas"), disciplinaData);
+
+      toast({
+        title: "Disciplina Cadastrada!",
+        description: `A disciplina "${newDisciplinaName.trim()}" foi salva com sucesso.`,
+      });
+
+      setIsCadastrarDisciplinaDialogOpen(false);
+      setNewDisciplinaName("");
+      setNewDisciplinaPrioridade([3]);
+      if (isAdmin) setAdminSelectedTurmaIdForDisciplina(undefined);
+
+    } catch (error: any) {
+      console.error("Error adding disciplina:", error);
+      let errMsg = "Ocorreu um erro ao tentar cadastrar a disciplina.";
+      if (error.code === 'permission-denied') {
+        errMsg = "Permissão negada para cadastrar a disciplina. Verifique as regras do Firestore.";
+      }
+      toast({ title: "Erro no Cadastro", description: errMsg, variant: "destructive" });
+    } finally {
+      setIsProcessingDisciplina(false);
+    }
   };
 
 
@@ -345,7 +366,7 @@ export default function ManagementPage() {
                         <Button 
                             type="button" 
                             onClick={handleCadastrarDisciplina}
-                            disabled={isProcessingDisciplina || !newDisciplinaName.trim() || (isAdmin && !adminSelectedTurmaIdForDisciplina)}
+                            disabled={isProcessingDisciplina || !newDisciplinaName.trim() || (isAdmin && !adminSelectedTurmaIdForDisciplina && activeTurmas.length > 0)}
                         >
                            {isProcessingDisciplina ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                            {isProcessingDisciplina ? "Salvando..." : "Salvar Disciplina"}
@@ -426,7 +447,7 @@ export default function ManagementPage() {
                     <Button 
                       type="button" 
                       onClick={handleAssignStudentToTurma}
-                      disabled={!studentMatriculaToAdd.trim() || (isAdmin && !adminSelectedTurmaId) || isProcessingAssignment || (isAdmin && loadingTurmas)}
+                      disabled={!studentMatriculaToAdd.trim() || (isAdmin && !adminSelectedTurmaId && activeTurmas.length > 0) || isProcessingAssignment || (isAdmin && loadingTurmas)}
                     >
                       {isProcessingAssignment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       {isProcessingAssignment ? "Atribuindo..." : "Atribuir Aluno"}
@@ -461,9 +482,10 @@ export default function ManagementPage() {
           <div className="mt-6 p-4 border border-dashed border-secondary/30 rounded-md bg-secondary/5">
             <h3 className="text-xl font-semibold text-secondary-foreground/80 mb-2">Avisos e Próximos Passos:</h3>
             <ul className="list-disc list-inside text-sm text-secondary-foreground/70 space-y-1">
-              <li>As funcionalidades de "Lançar Notas", "Imprimir Chamada", "Cadastrar Disciplina", etc., são simulações. O desenvolvimento completo é necessário para torná-las operacionais com um banco de dados.</li>
-              <li>A funcionalidade "Adicionar Aluno à Turma" agora interage com o Firestore para atualizar o `turmaId` do aluno especificado.</li>
-              <li>Certifique-se de que as regras de segurança do Firestore permitem que administradores e representantes realizem as operações necessárias.</li>
+              <li>As funcionalidades de "Lançar Notas", "Imprimir Chamada", etc., são simulações.</li>
+              <li>A funcionalidade "Adicionar Aluno à Turma" agora interage com o Firestore.</li>
+              <li>A funcionalidade "Cadastrar Disciplina" agora salva os dados no Firestore em uma coleção 'disciplinas'.</li>
+              <li>Certifique-se de que as regras de segurança do Firestore permitem que administradores e representantes realizem as operações necessárias (leitura de turmas, escrita em 'users' e 'disciplinas').</li>
             </ul>
           </div>
         </CardContent>
