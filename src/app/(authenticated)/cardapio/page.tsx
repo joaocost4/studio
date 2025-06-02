@@ -35,15 +35,26 @@ function parseTd(tdHtml: string): { text: string; rowspan: number } {
 }
 
 async function getCardapioData(): Promise<DailyMenu[] | null> {
+  const targetUrl = 'https://guri.unipampa.edu.ru/run/publico/';
   try {
-    const response = await fetch('https://guri.unipampa.edu.ru/run/publico/', {
+    const response = await fetch(targetUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
       },
       next: { revalidate: 3600 } // Revalidate every hour
     });
     if (!response.ok) {
-      console.error("Erro ao buscar cardápio: Status", response.status);
+      let responseBody = "";
+      try {
+        responseBody = await response.text();
+      } catch (e) {
+        responseBody = "Não foi possível ler o corpo da resposta.";
+      }
+      console.error(
+        `[CardapioPage - getCardapioData] Erro ao buscar cardápio: Status ${response.status}`,
+        `URL: ${targetUrl}`,
+        `Response Body Preview: ${responseBody.substring(0, 500)}`
+      );
       return null;
     }
     const html = await response.text();
@@ -54,19 +65,19 @@ async function getCardapioData(): Promise<DailyMenu[] | null> {
     const uruguaianaIndex = html.indexOf(uruguaianaHeaderString);
 
     if (uruguaianaIndex === -1) {
-      console.error("Seção 'Uruguaiana' não encontrada.");
+      console.error("[CardapioPage - getCardapioData] Seção 'Uruguaiana' não encontrada no HTML.", `URL: ${targetUrl}`);
       return null;
     }
 
     const tableStartIndex = html.indexOf("<table", uruguaianaIndex);
     if (tableStartIndex === -1) {
-      console.error("Tabela de Uruguaiana não encontrada.");
+      console.error("[CardapioPage - getCardapioData] Tabela de Uruguaiana não encontrada no HTML.", `URL: ${targetUrl}`);
       return null;
     }
 
     const tableEndIndex = html.indexOf("</table>", tableStartIndex);
     if (tableEndIndex === -1) {
-      console.error("Fim da tabela de Uruguaiana não encontrado.");
+      console.error("[CardapioPage - getCardapioData] Fim da tabela de Uruguaiana não encontrado no HTML.", `URL: ${targetUrl}`);
       return null;
     }
 
@@ -76,7 +87,7 @@ async function getCardapioData(): Promise<DailyMenu[] | null> {
     const tbodyEndIndex = tableHtml.indexOf("</tbody>", tbodyStartIndex);
 
     if (tbodyStartIndex === -1 || tbodyEndIndex === -1) {
-        console.error("Corpo da tabela (tbody) de Uruguaiana não encontrado.");
+        console.error("[CardapioPage - getCardapioData] Corpo da tabela (tbody) de Uruguaiana não encontrado.", `URL: ${targetUrl}`);
         return null;
     }
 
@@ -136,8 +147,15 @@ async function getCardapioData(): Promise<DailyMenu[] | null> {
     
     return uruguaianaMenu.filter(menu => menu.almoco || menu.jantar); // Filter out days with no meals parsed
 
-  } catch (error) {
-    console.error("Falha ao buscar ou processar o cardápio:", error);
+  } catch (error: any) {
+    console.error(
+      `[CardapioPage - getCardapioData] Falha ao buscar ou processar o cardápio. URL: ${targetUrl}`,
+      `ErrorType: ${error?.constructor?.name}`,
+      `Message: ${error?.message}`,
+      `Cause: ${error?.cause ?? 'N/A'}`,
+      // Descomente a linha abaixo para logar o objeto de erro completo em desenvolvimento, se necessário
+      // error 
+    );
     return null;
   }
 }
