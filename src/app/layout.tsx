@@ -3,8 +3,8 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/contexts/AuthContext';
 
-const APP_NAME = "Doce Acesso";
-const APP_DESCRIPTION = "Doce Acesso - App de calculadoras temáticas Moranguinho";
+const APP_NAME = "Calculadora da Moranguinho";
+const APP_DESCRIPTION = "Calculadora da Moranguinho - App de calculadoras temáticas";
 
 export const metadata: Metadata = {
   applicationName: APP_NAME,

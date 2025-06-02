@@ -10,14 +10,14 @@ export default function TermsPage() {
         <CardHeader>
           <CardTitle className="text-3xl font-headline text-primary">Termos de Serviço</CardTitle>
           <CardDescription className="text-muted-foreground">
-            Leia atentamente nossos termos e condições antes de usar o Doce Acesso.
+            Leia atentamente nossos termos e condições antes de usar a Calculadora da Moranguinho.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <section>
             <h2 className="text-xl font-semibold text-primary/90 mb-2">1. Aceitação dos Termos</h2>
             <p className="text-foreground/80">
-              Ao acessar ou usar o aplicativo Doce Acesso ("Serviço"), você concorda em cumprir estes Termos de Serviço.
+              Ao acessar ou usar o aplicativo Calculadora da Moranguinho ("Serviço"), você concorda em cumprir estes Termos de Serviço.
               Se você não concordar com qualquer parte dos termos, não poderá acessar o Serviço.
             </p>
           </section>
@@ -32,7 +32,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-primary/90 mb-2">3. Uso do Serviço</h2>
             <p className="text-foreground/80">
-              O Doce Acesso fornece calculadoras para fins educacionais e de referência. Os resultados fornecidos pelas calculadoras
+              A Calculadora da Moranguinho fornece calculadoras para fins educacionais e de referência. Os resultados fornecidos pelas calculadoras
               são baseados nas informações inseridas pelo usuário e nas fórmulas programadas. Não nos responsabilizamos por
               decisões tomadas com base nos resultados das calculadoras.
             </p>
@@ -41,7 +41,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold text-primary/90 mb-2">4. Propriedade Intelectual</h2>
             <p className="text-foreground/80">
               O Serviço e seu conteúdo original (excluindo conteúdo fornecido pelos usuários), recursos e funcionalidades são e permanecerão
-              propriedade exclusiva do Doce Acesso e de seus licenciadores. O tema "Moranguinho" é usado como inspiração lúdica e
+              propriedade exclusiva da Calculadora da Moranguinho e de seus licenciadores. O tema "Moranguinho" é usado como inspiração lúdica e
               não implica afiliação ou endosso pelos detentores dos direitos autorais originais da personagem.
             </p>
           </section>

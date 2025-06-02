@@ -63,7 +63,7 @@ export function AppSidebar() {
     if (matricula) {
       return matricula.substring(0, 2).toUpperCase();
     }
-    return "DA"; // Fallback for Doce Acesso or if no name/matricula
+    return "CM"; // Fallback for Calculadora da Moranguinho or if no name/matricula
   };
   
   const isActive = (href: string, isSubItem = false) => {
@@ -138,7 +138,7 @@ export function AppSidebar() {
         <div className="flex items-center gap-2">
             <Link href="/dashboard" className="flex items-center gap-2 text-sidebar-foreground hover:text-sidebar-primary transition-colors">
                 <StrawberryIcon className="h-8 w-8 text-primary" />
-                <h1 className="text-xl font-headline font-semibold group-data-[collapsible=icon]:hidden">Doce Acesso</h1>
+                <h1 className="text-xl font-headline font-semibold group-data-[collapsible=icon]:hidden">Calculadora da Moranguinho</h1>
             </Link>
         </div>
       </SidebarHeader>

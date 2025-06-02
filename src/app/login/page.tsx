@@ -20,7 +20,7 @@ export default function LoginPage() {
            <div className="mx-auto mb-4 text-primary">
             <StrawberryIcon width={60} height={60} />
           </div>
-          <CardTitle className="text-3xl font-headline text-primary">Bem-vindo(a) ao Doce Acesso!</CardTitle>
+          <CardTitle className="text-3xl font-headline text-primary">Bem-vindo(a) à Calculadora da Moranguinho!</CardTitle>
           <CardDescription className="text-muted-foreground">Faça login para continuar</CardDescription>
         </CardHeader>
         <CardContent>
@@ -28,7 +28,7 @@ export default function LoginPage() {
         </CardContent>
       </Card>
        <footer className="mt-8 text-center text-sm text-muted-foreground z-10">
-        <p>&copy; {new Date().getFullYear()} Doce Acesso. Todos os direitos reservados.</p>
+        <p>&copy; {new Date().getFullYear()} Calculadora da Moranguinho. Todos os direitos reservados.</p>
         <p className="mt-1">Tema Moranguinho com <span className="text-primary">♥</span></p>
       </footer>
     </div>

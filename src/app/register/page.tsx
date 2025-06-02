@@ -28,7 +28,7 @@ export default function RegisterPage() {
         </CardContent>
       </Card>
        <footer className="mt-8 text-center text-sm text-muted-foreground z-10">
-        <p>&copy; {new Date().getFullYear()} Doce Acesso. Todos os direitos reservados.</p>
+        <p>&copy; {new Date().getFullYear()} Calculadora da Moranguinho. Todos os direitos reservados.</p>
       </footer>
     </div>
   );
