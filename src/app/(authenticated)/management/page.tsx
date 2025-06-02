@@ -17,8 +17,8 @@ import {
   Users, 
   Briefcase,
   UserPlus,
-  CalendarDays, // Adicionado para o date picker
-  BookCopy // Adicionado para Cadastrar Prova
+  CalendarDays, 
+  BookCopy 
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
@@ -63,13 +63,13 @@ interface DisciplinaData {
 }
 
 interface ProvaData {
-  id?: string;
+  id?: string; // Firestore ID will be auto-generated
   turmaId: string;
   disciplinaId: string;
   nome: string;
   peso: number; 
-  data: Timestamp;
-  createdAt: Timestamp;
+  data: Timestamp; // Store as Firebase Timestamp
+  createdAt: Timestamp; // Store as Firebase Timestamp
 }
 
 
@@ -140,6 +140,13 @@ export default function ManagementPage() {
         const disciplinasQuery = query(collection(db, "disciplinas"), where("turmaId", "==", turmaId));
         const disciplinasSnapshot = await getDocs(disciplinasQuery);
         const disciplinasList = disciplinasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DisciplinaData));
+        // Sort disciplinas by priority (ascending), then by name (ascending)
+        disciplinasList.sort((a, b) => {
+            if (a.prioridade !== b.prioridade) {
+                return a.prioridade - b.prioridade;
+            }
+            return a.nome.localeCompare(b.nome);
+        });
         setDisciplinasForProvaDropdown(disciplinasList);
         if (disciplinasList.length === 0) {
             toast({ title: "Sem Disciplinas", description: "Nenhuma disciplina encontrada para esta turma.", variant: "default" });
@@ -157,7 +164,9 @@ export default function ManagementPage() {
       fetchDisciplinas(selectedTurmaIdForProva);
     } else if (isRepresentative && userProfile?.turmaId) {
       // Automatically set turma for representative and fetch their disciplinas
-      setSelectedTurmaIdForProva(userProfile.turmaId); 
+      if (!selectedTurmaIdForProva) { // Set only if not already set (e.g. by admin action if they share view)
+         setSelectedTurmaIdForProva(userProfile.turmaId);
+      }
       fetchDisciplinas(userProfile.turmaId);
     } else {
         setDisciplinasForProvaDropdown([]); // Clear if no turma selected
@@ -307,7 +316,12 @@ export default function ManagementPage() {
   };
 
   const handleCadastrarProva = async () => {
-    if (!selectedTurmaIdForProva) {
+    let targetTurmaId: string | undefined = selectedTurmaIdForProva;
+    if (isRepresentative && userProfile?.turmaId && !isAdmin) {
+        targetTurmaId = userProfile.turmaId;
+    }
+
+    if (!targetTurmaId) {
         toast({ title: "Turma não selecionada", description: "Por favor, selecione uma turma.", variant: "destructive"});
         return;
     }
@@ -320,7 +334,7 @@ export default function ManagementPage() {
         return;
     }
     const pesoNum = parseFloat(newProvaPeso);
-    if (isNaN(pesoNum) || pesoNum <= 0 || pesoNum > 10) { // Assuming peso contributes to a 0-10 scale
+    if (isNaN(pesoNum) || pesoNum <= 0 || pesoNum > 10) {
         toast({ title: "Peso inválido", description: "O peso deve ser um número entre 0.01 e 10.", variant: "destructive"});
         return;
     }
@@ -332,7 +346,7 @@ export default function ManagementPage() {
     setIsProcessingProva(true);
     try {
         const provaDataToSave: Omit<ProvaData, "id"> = {
-            turmaId: selectedTurmaIdForProva,
+            turmaId: targetTurmaId,
             disciplinaId: selectedDisciplinaIdForProva,
             nome: newProvaNome.trim(),
             peso: pesoNum,
@@ -348,8 +362,14 @@ export default function ManagementPage() {
         setNewProvaPeso("");
         setNewProvaData(undefined);
         setSelectedDisciplinaIdForProva(undefined);
-        if (isAdmin) setSelectedTurmaIdForProva(undefined);
-
+        if (isAdmin) {
+            setSelectedTurmaIdForProva(undefined); // Also clear turma for admin, which triggers discipline refetch
+        } else {
+             // For reps, disciplines list might need a refresh if they cadastrar multiple in a row for same turma
+            // but the current setup re-fetches on `selectedTurmaIdForProva` change which doesn't happen for rep after first load.
+            // If this becomes an issue, a manual re-fetch or different trigger might be needed.
+            // For now, clearing only the current prova fields.
+        }
 
     } catch (error: any) {
         console.error("Error adding prova:", error);
@@ -410,7 +430,7 @@ export default function ManagementPage() {
             {/* Cadastrar Disciplina Button & Dialog */}
             <Dialog open={isCadastrarDisciplinaDialogOpen} onOpenChange={(isOpen) => {
                 setIsCadastrarDisciplinaDialogOpen(isOpen);
-                if (!isOpen) {
+                if (!isOpen) { // Reset form on close
                     setNewDisciplinaName("");
                     setNewDisciplinaPrioridade([3]);
                     if (isAdmin) setAdminSelectedTurmaIdForDisciplina(undefined);
@@ -478,6 +498,11 @@ export default function ManagementPage() {
                                 </span>
                             </div>
                         </div>
+                         <div className="grid grid-cols-4 items-center gap-4">
+                             <span className="text-right text-xs text-muted-foreground col-start-2 col-span-3">
+                                Prioridade influencia a ordem na listagem de disciplinas (1 = mais alta).
+                            </span>
+                        </div>
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setIsCadastrarDisciplinaDialogOpen(false)} disabled={isProcessingDisciplina}>Cancelar</Button>
@@ -507,7 +532,7 @@ export default function ManagementPage() {
               }}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="w-full">
-                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Minha Turma
+                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Turma
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
@@ -582,13 +607,14 @@ export default function ManagementPage() {
              {/* Cadastrar Prova Button & Dialog */}
             <Dialog open={isCadastrarProvaDialogOpen} onOpenChange={(isOpen) => {
                 setIsCadastrarProvaDialogOpen(isOpen);
-                if (!isOpen) {
+                if (!isOpen) { // Reset form on close
                     setNewProvaNome("");
                     setNewProvaPeso("");
                     setNewProvaData(undefined);
                     setSelectedDisciplinaIdForProva(undefined);
-                    if (isAdmin) setSelectedTurmaIdForProva(undefined); // Also clear turma for admin
-                    else setDisciplinasForProvaDropdown([]); // Clear disciplinas if rep dialog is closed
+                    if (isAdmin) setSelectedTurmaIdForProva(undefined); 
+                    // For reps, disciplines list is tied to selectedTurmaIdForProva which is userProfile.turmaId
+                    // No need to clear disciplinasForProvaDropdown here explicitly if rep closes
                 }
             }}>
                 <DialogTrigger asChild>
@@ -596,7 +622,7 @@ export default function ManagementPage() {
                         <BookCopy className="mr-2 h-5 w-5" /> Cadastrar Prova
                     </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-lg"> {/* Increased width for more fields */}
+                <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle>Cadastrar Nova Prova</DialogTitle>
                         <DialogDescription>
@@ -616,7 +642,7 @@ export default function ManagementPage() {
                                         value={selectedTurmaIdForProva} 
                                         onValueChange={(value) => {
                                             setSelectedTurmaIdForProva(value);
-                                            setSelectedDisciplinaIdForProva(undefined); // Reset disciplina when turma changes
+                                            //setSelectedDisciplinaIdForProva(undefined); // Resetting disciplina when turma changes is handled by useEffect
                                         }}
                                     >
                                         <SelectTrigger className="col-span-3">
@@ -640,16 +666,16 @@ export default function ManagementPage() {
                                 <Select 
                                     value={selectedDisciplinaIdForProva} 
                                     onValueChange={setSelectedDisciplinaIdForProva}
-                                    disabled={!selectedTurmaIdForProva || disciplinasForProvaDropdown.length === 0}
+                                    disabled={(!selectedTurmaIdForProva && !userProfile?.turmaId) || disciplinasForProvaDropdown.length === 0}
                                 >
                                     <SelectTrigger className="col-span-3">
-                                        <SelectValue placeholder={!selectedTurmaIdForProva ? "Selecione uma turma primeiro" : "Selecione a disciplina"} />
+                                        <SelectValue placeholder={(!selectedTurmaIdForProva && !userProfile?.turmaId) ? "Selecione uma turma primeiro" : "Selecione a disciplina"} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {disciplinasForProvaDropdown.map(disc => (
-                                            <SelectItem key={disc.id} value={disc.id}>{disc.nome}</SelectItem>
+                                            <SelectItem key={disc.id} value={disc.id}>{disc.nome} (Prior: {disc.prioridade})</SelectItem>
                                         ))}
-                                        {selectedTurmaIdForProva && disciplinasForProvaDropdown.length === 0 && !loadingDisciplinasForProva && (
+                                        {((selectedTurmaIdForProva || userProfile?.turmaId)) && disciplinasForProvaDropdown.length === 0 && !loadingDisciplinasForProva && (
                                             <p className="p-2 text-sm text-muted-foreground">Nenhuma disciplina para esta turma.</p>
                                         )}
                                     </SelectContent>
@@ -675,11 +701,11 @@ export default function ManagementPage() {
                                 onChange={(e) => setNewProvaPeso(e.target.value)} 
                                 className="col-span-3"
                                 placeholder="Ex: 1.0 ou 0.7"
-                                step="0.1"
+                                step="0.01"
                             />
                         </div>
                          <div className="grid grid-cols-4 items-center gap-4">
-                            <span className="text-right text-sm text-muted-foreground col-start-2 col-span-3">
+                            <span className="text-right text-xs text-muted-foreground col-start-2 col-span-3">
                                 Se um aluno tirar 10 nessa avaliação, quanto ele garante na nota final, por exemplo histologia garante 1 ponto, ou 10%.
                             </span>
                         </div>
@@ -705,6 +731,7 @@ export default function ManagementPage() {
                                         onSelect={setNewProvaData}
                                         initialFocus
                                         locale={ptBR}
+                                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} // Disable past dates
                                     />
                                 </PopoverContent>
                             </Popover>
@@ -717,7 +744,7 @@ export default function ManagementPage() {
                             onClick={handleCadastrarProva}
                             disabled={
                                 isProcessingProva || 
-                                !selectedTurmaIdForProva || 
+                                !(isAdmin ? selectedTurmaIdForProva : userProfile?.turmaId) || 
                                 !selectedDisciplinaIdForProva || 
                                 !newProvaNome.trim() || 
                                 !newProvaPeso.trim() || 
@@ -763,6 +790,8 @@ export default function ManagementPage() {
     </div>
   );
 }
+    
+
     
 
     
