@@ -19,7 +19,7 @@ import {
   UserPlus,
   CalendarDays, 
   BookCopy,
-  FlaskConical // Added FlaskConical
+  FlaskConical
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
@@ -719,7 +719,7 @@ export default function ManagementPage() {
                                         selected={newProvaData}
                                         onSelect={(date) => {
                                             setNewProvaData(date);
-                                            setIsProvaDatePickerOpen(false);
+                                            setIsProvaDatePickerOpen(false); 
                                         }}
                                         initialFocus
                                         locale={ptBR}
@@ -760,9 +760,7 @@ export default function ManagementPage() {
                 <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => router.push('/admin/turmas')}>
                   <Users className="mr-2 h-5 w-5" /> Gerir Turmas
                 </Button>
-                <Button variant="outline" className="w-full" onClick={() => handleSimulatedAction("Teste")}>
-                    <FlaskConical className="mr-2 h-5 w-5" /> Teste
-                </Button>
+                 {/* O botão "Teste" foi substituído pela funcionalidade "Cadastrar Prova" */}
               </div>
             </div>
           )}
@@ -782,6 +780,8 @@ export default function ManagementPage() {
     </div>
   );
 }
+    
+
     
 
     
