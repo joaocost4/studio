@@ -18,7 +18,8 @@ import {
   Briefcase,
   UserPlus,
   CalendarDays, 
-  BookCopy 
+  BookCopy,
+  FlaskConical // Added FlaskConical
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
@@ -63,13 +64,13 @@ interface DisciplinaData {
 }
 
 interface ProvaData {
-  id?: string; // Firestore ID will be auto-generated
+  id?: string; 
   turmaId: string;
   disciplinaId: string;
   nome: string;
   peso: number; 
-  data: Timestamp; // Store as Firebase Timestamp
-  createdAt: Timestamp; // Store as Firebase Timestamp
+  data: Timestamp; 
+  createdAt: Timestamp; 
 }
 
 
@@ -101,9 +102,10 @@ export default function ManagementPage() {
   const [loadingDisciplinasForProva, setLoadingDisciplinasForProva] = useState(false);
   const [selectedDisciplinaIdForProva, setSelectedDisciplinaIdForProva] = useState<string | undefined>(undefined);
   const [newProvaNome, setNewProvaNome] = useState("");
-  const [newProvaPeso, setNewProvaPeso] = useState<string>(""); // Store as string for input flexibility
+  const [newProvaPeso, setNewProvaPeso] = useState<string>(""); 
   const [newProvaData, setNewProvaData] = useState<Date | undefined>(undefined);
   const [isProcessingProva, setIsProcessingProva] = useState(false);
+  const [isProvaDatePickerOpen, setIsProvaDatePickerOpen] = useState(false);
 
 
   const isAdmin = userProfile?.role === USER_ROLES.ADMIN;
@@ -131,16 +133,14 @@ export default function ManagementPage() {
     }
   }, [isAdmin, fetchActiveTurmas]);
 
-  // Effect to load disciplinas when turma is selected for "Cadastrar Prova"
   useEffect(() => {
     const fetchDisciplinas = async (turmaId: string) => {
       setLoadingDisciplinasForProva(true);
-      setSelectedDisciplinaIdForProva(undefined); // Reset disciplina selection
+      setSelectedDisciplinaIdForProva(undefined); 
       try {
         const disciplinasQuery = query(collection(db, "disciplinas"), where("turmaId", "==", turmaId));
         const disciplinasSnapshot = await getDocs(disciplinasQuery);
         const disciplinasList = disciplinasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DisciplinaData));
-        // Sort disciplinas by priority (ascending), then by name (ascending)
         disciplinasList.sort((a, b) => {
             if (a.prioridade !== b.prioridade) {
                 return a.prioridade - b.prioridade;
@@ -163,13 +163,12 @@ export default function ManagementPage() {
     if (isAdmin && selectedTurmaIdForProva) {
       fetchDisciplinas(selectedTurmaIdForProva);
     } else if (isRepresentative && userProfile?.turmaId) {
-      // Automatically set turma for representative and fetch their disciplinas
-      if (!selectedTurmaIdForProva) { // Set only if not already set (e.g. by admin action if they share view)
+      if (!selectedTurmaIdForProva) { 
          setSelectedTurmaIdForProva(userProfile.turmaId);
       }
       fetchDisciplinas(userProfile.turmaId);
     } else {
-        setDisciplinasForProvaDropdown([]); // Clear if no turma selected
+        setDisciplinasForProvaDropdown([]); 
     }
   }, [isAdmin, isRepresentative, userProfile?.turmaId, selectedTurmaIdForProva, toast]);
 
@@ -363,13 +362,8 @@ export default function ManagementPage() {
         setNewProvaData(undefined);
         setSelectedDisciplinaIdForProva(undefined);
         if (isAdmin) {
-            setSelectedTurmaIdForProva(undefined); // Also clear turma for admin, which triggers discipline refetch
-        } else {
-             // For reps, disciplines list might need a refresh if they cadastrar multiple in a row for same turma
-            // but the current setup re-fetches on `selectedTurmaIdForProva` change which doesn't happen for rep after first load.
-            // If this becomes an issue, a manual re-fetch or different trigger might be needed.
-            // For now, clearing only the current prova fields.
-        }
+            setSelectedTurmaIdForProva(undefined); 
+        } 
 
     } catch (error: any) {
         console.error("Error adding prova:", error);
@@ -427,10 +421,9 @@ export default function ManagementPage() {
               <CalendarPlus className="mr-2 h-5 w-5" /> Agendar Reuniões
             </Button>
             
-            {/* Cadastrar Disciplina Button & Dialog */}
             <Dialog open={isCadastrarDisciplinaDialogOpen} onOpenChange={(isOpen) => {
                 setIsCadastrarDisciplinaDialogOpen(isOpen);
-                if (!isOpen) { // Reset form on close
+                if (!isOpen) { 
                     setNewDisciplinaName("");
                     setNewDisciplinaPrioridade([3]);
                     if (isAdmin) setAdminSelectedTurmaIdForDisciplina(undefined);
@@ -604,17 +597,14 @@ export default function ManagementPage() {
               <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
             </Button>
 
-             {/* Cadastrar Prova Button & Dialog */}
             <Dialog open={isCadastrarProvaDialogOpen} onOpenChange={(isOpen) => {
                 setIsCadastrarProvaDialogOpen(isOpen);
-                if (!isOpen) { // Reset form on close
+                if (!isOpen) { 
                     setNewProvaNome("");
                     setNewProvaPeso("");
                     setNewProvaData(undefined);
                     setSelectedDisciplinaIdForProva(undefined);
                     if (isAdmin) setSelectedTurmaIdForProva(undefined); 
-                    // For reps, disciplines list is tied to selectedTurmaIdForProva which is userProfile.turmaId
-                    // No need to clear disciplinasForProvaDropdown here explicitly if rep closes
                 }
             }}>
                 <DialogTrigger asChild>
@@ -642,7 +632,6 @@ export default function ManagementPage() {
                                         value={selectedTurmaIdForProva} 
                                         onValueChange={(value) => {
                                             setSelectedTurmaIdForProva(value);
-                                            //setSelectedDisciplinaIdForProva(undefined); // Resetting disciplina when turma changes is handled by useEffect
                                         }}
                                     >
                                         <SelectTrigger className="col-span-3">
@@ -705,13 +694,13 @@ export default function ManagementPage() {
                             />
                         </div>
                          <div className="grid grid-cols-4 items-center gap-4">
-                            <span className="text-right text-xs text-muted-foreground col-start-2 col-span-3">
+                             <span className="text-right text-xs text-muted-foreground col-start-2 col-span-3">
                                 Se um aluno tirar 10 nessa avaliação, quanto ele garante na nota final, por exemplo histologia garante 1 ponto, ou 10%.
                             </span>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="prova-data" className="text-right">Data da Prova</Label>
-                            <Popover>
+                            <Popover open={isProvaDatePickerOpen} onOpenChange={setIsProvaDatePickerOpen}>
                                 <PopoverTrigger asChild>
                                     <Button
                                         variant={"outline"}
@@ -728,10 +717,13 @@ export default function ManagementPage() {
                                     <Calendar
                                         mode="single"
                                         selected={newProvaData}
-                                        onSelect={setNewProvaData}
+                                        onSelect={(date) => {
+                                            setNewProvaData(date);
+                                            setIsProvaDatePickerOpen(false);
+                                        }}
                                         initialFocus
                                         locale={ptBR}
-                                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} // Disable past dates
+                                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} 
                                     />
                                 </PopoverContent>
                             </Popover>
@@ -768,8 +760,8 @@ export default function ManagementPage() {
                 <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => router.push('/admin/turmas')}>
                   <Users className="mr-2 h-5 w-5" /> Gerir Turmas
                 </Button>
-                <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => handleSimulatedAction("Auditoria do Sistema")}>
-                  Auditoria do Sistema (Simulação)
+                <Button variant="outline" className="w-full" onClick={() => handleSimulatedAction("Teste")}>
+                    <FlaskConical className="mr-2 h-5 w-5" /> Teste
                 </Button>
               </div>
             </div>
@@ -790,6 +782,8 @@ export default function ManagementPage() {
     </div>
   );
 }
+    
+
     
 
     
