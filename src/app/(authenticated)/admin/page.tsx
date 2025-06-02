@@ -2,14 +2,14 @@
 "use client";
 
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { USER_ROLES } from "@/lib/constants";
+import { USER_ROLES, UserRole, FIREBASE_EMAIL_DOMAIN } from "@/lib/constants"; // Added UserRole
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, AlertTriangle, TestTube2, Users, FileText, Trash2, Edit3, Eye, UserPlus, Search } from "lucide-react";
+import { ShieldCheck, AlertTriangle, TestTube2, Users, FileText, Trash2, Edit3, Eye, UserPlus, Search, Settings, Briefcase, PackagePlus, CalendarPlus, Megaphone, Printer, ClipboardSignature } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import React, { useEffect, useState, useMemo } from "react";
-import { collection, getDocs, doc, deleteDoc, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db, auth as firebaseAuth } from "@/lib/firebase";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { collection, getDocs, doc, deleteDoc, Timestamp, setDoc, serverTimestamp, updateDoc, addDoc, query, where, getDoc as getFirestoreDoc } from "firebase/firestore"; // Aliased getDoc
+import { db, auth as firebaseAuth } from "@/lib/firebase"; // Renamed to avoid conflict
 import {
   Table,
   TableBody,
@@ -34,26 +34,43 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { FIREBASE_EMAIL_DOMAIN } from "@/lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 // Interfaces for data
 interface UserData {
-  id: string; // Firestore document ID (usually user.uid)
-  uid: string; // Firebase Auth UID
+  id: string; 
+  uid: string; 
   matricula: string;
   nomeCompleto: string;
   role: UserRole;
   actualEmail?: string;
+  turmaId?: string; 
+  turmaNome?: string; // For display purposes
   createdAt?: Timestamp;
 }
 
 interface CalculatorData {
-  id: string; // UID of the user who owns this data (document ID)
+  id: string; 
   matricula: string;
   updatedAt: Timestamp;
-  lastSession: Record<string, any>; // The actual calculator inputs
+  lastSession: Record<string, any>; 
 }
+
+interface TurmaData {
+  id: string;
+  nome: string;
+  ativa: boolean;
+  createdAt?: Timestamp;
+}
+
+interface AppSettingsData {
+  avisoTrocarTurma: boolean;
+  avisoRepresentante: boolean;
+  avisoInstalarApp: boolean;
+  updatedAt?: Timestamp;
+}
+
 
 export default function AdminPage() {
   const { userProfile } = useAuth();
@@ -63,6 +80,13 @@ export default function AdminPage() {
   const [users, setUsers] = useState<UserData[]>([]);
   const [calc1Data, setCalc1Data] = useState<CalculatorData[]>([]);
   const [calc2Data, setCalc2Data] = useState<CalculatorData[]>([]);
+  const [turmas, setTurmas] = useState<TurmaData[]>([]);
+  const [appSettings, setAppSettings] = useState<AppSettingsData>({
+    avisoTrocarTurma: false,
+    avisoRepresentante: false,
+    avisoInstalarApp: false,
+  });
+
   const [loadingData, setLoadingData] = useState(true);
 
   // Add User Dialog State
@@ -72,6 +96,8 @@ export default function AdminPage() {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<UserRole>(USER_ROLES.USER);
+  const [newUserTurmaId, setNewUserTurmaId] = useState<string | undefined>(undefined);
+
 
   // Edit User Dialog State
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
@@ -79,6 +105,8 @@ export default function AdminPage() {
   const [editUserNomeCompleto, setEditUserNomeCompleto] = useState("");
   const [editUserActualEmail, setEditUserActualEmail] = useState("");
   const [editUserRole, setEditUserRole] = useState<UserRole>(USER_ROLES.USER);
+  const [editUserTurmaId, setEditUserTurmaId] = useState<string | undefined>(undefined);
+
 
   // View Calculator Data Dialog State
   const [isViewCalcDataDialogOpen, setIsViewCalcDataDialogOpen] = useState(false);
@@ -90,12 +118,35 @@ export default function AdminPage() {
   const [calc1SearchTerm, setCalc1SearchTerm] = useState("");
   const [calc2SearchTerm, setCalc2SearchTerm] = useState("");
 
+  // Turma Dialog States
+  const [isAddTurmaDialogOpen, setIsAddTurmaDialogOpen] = useState(false);
+  const [newTurmaName, setNewTurmaName] = useState("");
+  const [newTurmaAtiva, setNewTurmaAtiva] = useState(true);
+  const [isEditTurmaDialogOpen, setIsEditTurmaDialogOpen] = useState(false);
+  const [editingTurma, setEditingTurma] = useState<TurmaData | null>(null);
+  const [editTurmaName, setEditTurmaName] = useState("");
+  const [editTurmaAtiva, setEditTurmaAtiva] = useState(true);
 
-  const fetchData = async () => {
+
+  const activeTurmas = useMemo(() => turmas.filter(t => t.ativa), [turmas]);
+
+  const fetchData = useCallback(async () => {
     setLoadingData(true);
     try {
+      const turmasSnapshot = await getDocs(collection(db, "turmas"));
+      const turmasList = turmasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TurmaData));
+      setTurmas(turmasList);
+
       const usersSnapshot = await getDocs(collection(db, "users"));
-      const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
+      const usersList = usersSnapshot.docs.map(doc => {
+        const data = doc.data() as Omit<UserData, 'id' | 'turmaNome'>;
+        const turma = turmasList.find(t => t.id === data.turmaId);
+        return { 
+          id: doc.id, 
+          ...data,
+          turmaNome: turma ? turma.nome : "N/A" 
+        } as UserData;
+      });
       setUsers(usersList);
 
       const calc1Snapshot = await getDocs(collection(db, "calculator1Data"));
@@ -106,23 +157,39 @@ export default function AdminPage() {
       const calc2List = calc2Snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CalculatorData));
       setCalc2Data(calc2List);
 
+      const settingsDocRef = doc(db, "settings", "appGlobalSettings");
+      const settingsDocSnap = await getFirestoreDoc(settingsDocRef); // Using aliased getDoc
+      if (settingsDocSnap.exists()) {
+        setAppSettings(settingsDocSnap.data() as AppSettingsData);
+      } else {
+        // Initialize default settings if not exist
+        const defaultSettings: AppSettingsData = {
+          avisoTrocarTurma: false,
+          avisoRepresentante: false,
+          avisoInstalarApp: true, // Default to true for install prompt
+          updatedAt: serverTimestamp() as Timestamp
+        };
+        await setDoc(settingsDocRef, defaultSettings);
+        setAppSettings(defaultSettings);
+      }
+
     } catch (error: any) {
       console.error("Error fetching admin data:", error);
-      let description = "Não foi possível buscar os dados para administração. Verifique as regras do Firestore.";
-      if (error.code === 'permission-denied' || error.message?.includes("Missing or insufficient permissions")) {
-        description = "Permissão negada ao buscar dados. Verifique as Regras de Segurança do Firestore para permitir acesso de administrador.";
+      let description = "Não foi possível buscar os dados para administração.";
+      if (error.code === 'permission-denied' || error.message?.includes("Missing or insufficient permissions") || error.message?.includes("PERMISSION_DENIED")) {
+        description = "Permissão negada ao buscar dados. Verifique se suas Regras de Segurança do Firestore concedem acesso de administrador e se sua conta de usuário no banco de dados possui a função (role) 'admin' corretamente configurada. Consulte as 'Notas Importantes do Admin' nesta página para um exemplo de regras.";
       }
-      toast({ title: "Erro ao carregar dados", description, variant: "destructive" });
+      toast({ title: "Erro ao Carregar Dados Administrativos", description, variant: "destructive", duration: 10000 });
     } finally {
       setLoadingData(false);
     }
-  };
+  }, [toast]); 
 
   useEffect(() => {
     if (userProfile?.role === USER_ROLES.ADMIN) {
       fetchData();
     }
-  }, [userProfile]);
+  }, [userProfile, fetchData]);
 
   const filteredUsers = useMemo(() => {
     if (!userSearchTerm) {
@@ -168,14 +235,19 @@ export default function AdminPage() {
       const userCredential = await createUserWithEmailAndPassword(firebaseAuth, firebaseAuthEmail, newUserPassword);
       const user = userCredential.user;
 
-      await setDoc(doc(db, "users", user.uid), {
+      const userDocData: Omit<UserData, 'id' | 'turmaNome' | 'createdAt'> & { createdAt: any } = {
         uid: user.uid,
         matricula: newUserMatricula,
         nomeCompleto: newUserName,
         actualEmail: newUserEmail,
         role: newUserRole,
         createdAt: serverTimestamp(),
-      });
+      };
+      if (newUserTurmaId) {
+        userDocData.turmaId = newUserTurmaId;
+      }
+
+      await setDoc(doc(db, "users", user.uid), userDocData);
 
       toast({ title: "Usuário Adicionado", description: `Usuário ${newUserName} criado com sucesso.` });
       setIsAddUserDialogOpen(false);
@@ -184,6 +256,7 @@ export default function AdminPage() {
       setNewUserEmail("");
       setNewUserPassword("");
       setNewUserRole(USER_ROLES.USER);
+      setNewUserTurmaId(undefined);
       fetchData(); 
     } catch (error: any) {
       console.error("Error adding user:", error);
@@ -218,6 +291,7 @@ export default function AdminPage() {
     setEditUserNomeCompleto(user.nomeCompleto);
     setEditUserActualEmail(user.actualEmail || "");
     setEditUserRole(user.role);
+    setEditUserTurmaId(user.turmaId || undefined);
     setIsEditUserDialogOpen(true);
   };
 
@@ -226,11 +300,17 @@ export default function AdminPage() {
 
     try {
       const userDocRef = doc(db, "users", editingUser.id);
-      await updateDoc(userDocRef, {
+      const updateData: Partial<UserData> = {
         nomeCompleto: editUserNomeCompleto,
         actualEmail: editUserActualEmail,
         role: editUserRole,
-      });
+      };
+      if (editUserTurmaId) {
+        updateData.turmaId = editUserTurmaId;
+      } else {
+        updateData.turmaId = undefined; 
+      }
+      await updateDoc(userDocRef, updateData);
       toast({ title: "Usuário Atualizado", description: `Dados de ${editUserNomeCompleto} atualizados.` });
       setIsEditUserDialogOpen(false);
       setEditingUser(null);
@@ -271,6 +351,105 @@ export default function AdminPage() {
     }
   };
 
+  // Turma CRUD Actions
+  const handleAddTurma = async () => {
+    if (!newTurmaName.trim()) {
+      toast({ title: "Nome da Turma Obrigatório", description: "Por favor, insira um nome para a turma.", variant: "destructive" });
+      return;
+    }
+    try {
+      await addDoc(collection(db, "turmas"), {
+        nome: newTurmaName,
+        ativa: newTurmaAtiva,
+        createdAt: serverTimestamp(),
+      });
+      toast({ title: "Turma Adicionada", description: `Turma "${newTurmaName}" criada com sucesso.` });
+      setIsAddTurmaDialogOpen(false);
+      setNewTurmaName("");
+      setNewTurmaAtiva(true);
+      fetchData();
+    } catch (error) {
+      console.error("Error adding turma:", error);
+      toast({ title: "Erro ao adicionar turma", variant: "destructive" });
+    }
+  };
+
+  const handleEditTurmaClick = (turma: TurmaData) => {
+    setEditingTurma(turma);
+    setEditTurmaName(turma.nome);
+    setEditTurmaAtiva(turma.ativa);
+    setIsEditTurmaDialogOpen(true);
+  };
+
+  const handleUpdateTurma = async () => {
+    if (!editingTurma || !editTurmaName.trim()) {
+      toast({ title: "Nome da Turma Obrigatório", description: "Por favor, insira um nome para a turma.", variant: "destructive" });
+      return;
+    }
+    try {
+      const turmaDocRef = doc(db, "turmas", editingTurma.id);
+      await updateDoc(turmaDocRef, {
+        nome: editTurmaName,
+        ativa: editTurmaAtiva,
+      });
+      toast({ title: "Turma Atualizada", description: `Turma "${editTurmaName}" atualizada.` });
+      setIsEditTurmaDialogOpen(false);
+      setEditingTurma(null);
+      fetchData();
+    } catch (error) {
+      console.error("Error updating turma:", error);
+      toast({ title: "Erro ao atualizar turma", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTurma = async (turmaId: string, turmaName: string) => {
+    const usersInTurmaQuery = query(collection(db, "users"), where("turmaId", "==", turmaId));
+    const usersInTurmaSnapshot = await getDocs(usersInTurmaQuery);
+
+    if (!usersInTurmaSnapshot.empty) {
+        toast({ 
+            title: "Exclusão Bloqueada", 
+            description: `A turma "${turmaName}" não pode ser excluída pois há ${usersInTurmaSnapshot.size} usuário(s) associado(s) a ela. Remova os usuários da turma primeiro.`,
+            variant: "destructive",
+            duration: 7000 
+        });
+        return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "turmas", turmaId));
+      toast({ title: "Turma Excluída", description: `Turma "${turmaName}" foi excluída.` });
+      fetchData();
+    } catch (error) {
+      console.error("Error deleting turma:", error);
+      toast({ title: "Erro ao excluir turma", variant: "destructive" });
+    }
+  };
+
+  // App Settings Toggle
+  const handleSettingToggle = async (settingKey: keyof AppSettingsData, value: boolean) => {
+    try {
+      const settingsDocRef = doc(db, "settings", "appGlobalSettings");
+      await setDoc(settingsDocRef, {
+        ...appSettings, 
+        [settingKey]: value,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      
+      setAppSettings(prev => ({ ...prev, [settingKey]: value })); 
+
+      let settingName = "";
+      if (settingKey === 'avisoTrocarTurma') settingName = "Aviso Trocar Turma";
+      else if (settingKey === 'avisoRepresentante') settingName = "Aviso Representante";
+      else if (settingKey === 'avisoInstalarApp') settingName = "Aviso Instalar App";
+      
+      toast({ title: "Configuração Atualizada", description: `${settingName} ${value ? 'ativado' : 'desativado'}.` });
+    } catch (error) {
+      console.error("Error updating setting:", error);
+      toast({ title: "Erro ao atualizar configuração", variant: "destructive" });
+    }
+  };
+
 
   if (!userProfile || userProfile.role !== USER_ROLES.ADMIN) {
     return (
@@ -296,9 +475,6 @@ export default function AdminPage() {
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Button variant="destructive" onClick={() => handleAdminAction("Limpar Cache")} className="w-full">
-              <TestTube2 className="mr-2 h-5 w-5" /> Limpar Cache (Simulação)
-            </Button>
             <Button variant="destructive" onClick={() => handleAdminAction("Recalcular Estatísticas")} className="w-full">
               <TestTube2 className="mr-2 h-5 w-5" /> Recalcular Stats (Simulação)
             </Button>
@@ -317,7 +493,7 @@ export default function AdminPage() {
                   <UserPlus className="mr-2 h-5 w-5" /> Adicionar Usuário
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
+              <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Adicionar Novo Usuário</DialogTitle>
                   <DialogDescription>
@@ -354,6 +530,20 @@ export default function AdminPage() {
                         </SelectContent>
                       </Select>
                   </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="add-user-turma" className="text-right">Turma</Label>
+                    <Select value={newUserTurmaId} onValueChange={(value) => setNewUserTurmaId(value === 'none' ? undefined : value)}>
+                        <SelectTrigger className="col-span-3">
+                            <SelectValue placeholder="Selecione uma turma (opcional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="none">Nenhuma</SelectItem>
+                            {activeTurmas.map(turma => (
+                                <SelectItem key={turma.id} value={turma.id}>{turma.nome}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button type="button" onClick={handleAddUser}>Salvar Usuário</Button>
@@ -379,6 +569,7 @@ export default function AdminPage() {
                 <TableRow>
                   <TableHead>Matrícula</TableHead>
                   <TableHead>Nome</TableHead>
+                  <TableHead>Turma</TableHead>
                   <TableHead>Função</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
@@ -388,6 +579,7 @@ export default function AdminPage() {
                   <TableRow key={user.id}>
                     <TableCell>{user.matricula}</TableCell>
                     <TableCell>{user.nomeCompleto}</TableCell>
+                    <TableCell>{user.turmaNome || "N/A"}</TableCell>
                     <TableCell>{user.role}</TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="ghost" size="icon" onClick={() => handleEditUserClick(user)}>
@@ -424,7 +616,7 @@ export default function AdminPage() {
       {/* Edit User Dialog */}
       {editingUser && (
         <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Editar Usuário</DialogTitle>
               <DialogDescription>
@@ -457,6 +649,20 @@ export default function AdminPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-user-turma" className="text-right">Turma</Label>
+                 <Select value={editUserTurmaId} onValueChange={(value) => setEditUserTurmaId(value === 'none' ? undefined : value)}>
+                    <SelectTrigger className="col-span-3">
+                        <SelectValue placeholder="Selecione uma turma (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="none">Nenhuma</SelectItem>
+                        {activeTurmas.map(turma => (
+                            <SelectItem key={turma.id} value={turma.id}>{turma.nome}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsEditUserDialogOpen(false)}>Cancelar</Button>
@@ -465,6 +671,167 @@ export default function AdminPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Turmas CRUD */}
+        <Card>
+            <CardHeader>
+                <div className="flex justify-between items-center">
+                    <CardTitle>Gerenciamento de Turmas</CardTitle>
+                    <Dialog open={isAddTurmaDialogOpen} onOpenChange={setIsAddTurmaDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline"><Users className="mr-2 h-5 w-5" /> Adicionar Turma</Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px]">
+                            <DialogHeader>
+                                <DialogTitle>Adicionar Nova Turma</DialogTitle>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="turma-name" className="text-right">Nome</Label>
+                                    <Input id="turma-name" value={newTurmaName} onChange={(e) => setNewTurmaName(e.target.value)} className="col-span-3" />
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="turma-ativa" className="text-right">Ativa</Label>
+                                    <Switch id="turma-ativa" checked={newTurmaAtiva} onCheckedChange={setNewTurmaAtiva} className="col-span-3 justify-self-start" />
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button onClick={handleAddTurma}>Salvar Turma</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+            </CardHeader>
+            <CardContent>
+                {loadingData ? <p>Carregando turmas...</p> : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Nome da Turma</TableHead>
+                                <TableHead>Ativa</TableHead>
+                                <TableHead className="text-right">Ações</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {turmas.map((turma) => (
+                                <TableRow key={turma.id}>
+                                    <TableCell>{turma.nome}</TableCell>
+                                    <TableCell>{turma.ativa ? "Sim" : "Não"}</TableCell>
+                                    <TableCell className="text-right space-x-2">
+                                        <Button variant="ghost" size="icon" onClick={() => handleEditTurmaClick(turma)}>
+                                            <Edit3 className="h-4 w-4" />
+                                        </Button>
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        Tem certeza que deseja excluir a turma "{turma.nome}"? Esta ação não pode ser desfeita.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => handleDeleteTurma(turma.id, turma.nome)} className="bg-destructive hover:bg-destructive/90">Excluir</AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                )}
+            </CardContent>
+        </Card>
+
+        {/* Edit Turma Dialog */}
+        {editingTurma && (
+            <Dialog open={isEditTurmaDialogOpen} onOpenChange={setIsEditTurmaDialogOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Editar Turma</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-turma-name" className="text-right">Nome</Label>
+                            <Input id="edit-turma-name" value={editTurmaName} onChange={(e) => setEditTurmaName(e.target.value)} className="col-span-3" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-turma-ativa" className="text-right">Ativa</Label>
+                            <Switch id="edit-turma-ativa" checked={editTurmaAtiva} onCheckedChange={setEditTurmaAtiva} className="col-span-3 justify-self-start" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditTurmaDialogOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleUpdateTurma}>Salvar Alterações</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        )}
+
+       {/* App Global Settings Card */}
+        <Card>
+            <CardHeader>
+                <CardTitle>Configurações Gerais do Aplicativo</CardTitle>
+                <CardDescription>Ajustes que afetam o comportamento global do app.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                {loadingData ? <p>Carregando configurações...</p> : (
+                    <>
+                        <div className="flex items-center justify-between p-3 border rounded-md">
+                            <Label htmlFor="aviso-trocar-turma" className="flex flex-col space-y-1">
+                                <span>Aviso "Trocar Turma"</span>
+                                <span className="font-normal leading-snug text-muted-foreground">
+                                    Exibir aviso ao usuário sobre como trocar de turma (se aplicável).
+                                </span>
+                            </Label>
+                            <Switch
+                                id="aviso-trocar-turma"
+                                checked={appSettings.avisoTrocarTurma}
+                                onCheckedChange={(value) => handleSettingToggle('avisoTrocarTurma', value)}
+                            />
+                        </div>
+                        <div className="flex items-center justify-between p-3 border rounded-md">
+                             <Label htmlFor="aviso-representante" className="flex flex-col space-y-1">
+                                <span>Aviso "Representante"</span>
+                                <span className="font-normal leading-snug text-muted-foreground">
+                                    Exibir informações ou contatos do representante da turma.
+                                </span>
+                            </Label>
+                            <Switch
+                                id="aviso-representante"
+                                checked={appSettings.avisoRepresentante}
+                                onCheckedChange={(value) => handleSettingToggle('avisoRepresentante', value)}
+                            />
+                        </div>
+                        <div className="flex items-center justify-between p-3 border rounded-md">
+                            <Label htmlFor="aviso-instalar-app" className="flex flex-col space-y-1">
+                                <span>Aviso "Instalar App"</span>
+                                <span className="font-normal leading-snug text-muted-foreground">
+                                    Exibir prompt ou banner para instalar o PWA.
+                                </span>
+                            </Label>
+                            <Switch
+                                id="aviso-instalar-app"
+                                checked={appSettings.avisoInstalarApp}
+                                onCheckedChange={(value) => handleSettingToggle('avisoInstalarApp', value)}
+                            />
+                        </div>
+                    </>
+                )}
+            </CardContent>
+             <CardFooter>
+                <p className="text-xs text-muted-foreground">
+                    Última atualização das configurações: {appSettings.updatedAt?.toDate().toLocaleString('pt-BR') || 'N/A'}
+                </p>
+            </CardFooter>
+        </Card>
+
 
       {/* View Calculator Data Dialog */}
       {viewingCalcData && viewingCalcDataType && (
@@ -615,42 +982,55 @@ export default function AdminPage() {
           )}
         </CardContent>
       </Card>
+
        <CardFooter className="mt-6 p-4 border border-dashed border-destructive/30 rounded-md bg-destructive/5">
         <div className="space-y-2">
             <h3 className="text-xl font-semibold text-destructive/80 mb-2">Notas Importantes do Admin:</h3>
             <ul className="list-disc list-inside text-sm text-destructive/70 space-y-1">
-              <li>A exclusão de usuários aqui remove apenas o registro do Firestore, não a conta de Autenticação Firebase. A exclusão completa de usuários requer SDK Admin do Firebase.</li>
+              <li>A exclusão de usuários aqui remove apenas o registro do Firestore, não a conta de Autenticação Firebase. A exclusão completa de usuários requer SDK Admin do Firebase ou intervenção manual no console.</li>
               <li>A alteração de matrícula (e, por consequência, o email de autenticação do Firebase) e senha não são cobertas pela funcionalidade de "Editar Usuário" atual.</li>
-              <li>Para que as operações de Leitura (de todos os dados) e Exclusão/Edição funcionem corretamente, suas <strong>Regras de Segurança do Firestore</strong> precisam permitir essas ações para o perfil de administrador.
-                Exemplo de regra para `users` (similar para `calculator1Data` e `calculator2Data`):
+              <li>Para que todas as operações CRUD funcionem, suas <strong>Regras de Segurança do Firestore</strong> precisam permitir essas ações para o perfil de administrador. Exemplo:
                 <pre className="mt-1 p-2 bg-black/10 rounded text-xs overflow-x-auto">{`
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Rule for 'users'
+    // Users
     match /users/{userId} {
       allow read, write: if request.auth != null && 
                           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}' || 
                            request.auth.uid == userId);
     }
-    // Rule for 'calculator1Data'
+    // Calculator Data
     match /calculator1Data/{docId} {
       allow read, write: if request.auth != null &&
                           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}' ||
                            request.auth.uid == docId);
     }
-    // Rule for 'calculator2Data'
     match /calculator2Data/{docId} {
       allow read, write: if request.auth != null &&
                           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}' ||
                            request.auth.uid == docId);
     }
+    // Turmas
+    match /turmas/{turmaId} {
+      allow read, write: if request.auth != null && 
+                           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}';
+      // Allow authenticated users to read turmas list for selection
+      // allow list: if request.auth != null; // Consider this if non-admins need to list turmas
+    }
+    // App Settings
+    match /settings/appGlobalSettings {
+       allow read, write: if request.auth != null && 
+                           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}';
+    }
   }
 }`}
                 </pre>
               </li>
+               <li>Ao excluir uma turma, verifique se há usuários associados. O sistema atualmente impede a exclusão se houver usuários vinculados.</li>
             </ul>
         </div>
       </CardFooter>
     </div>
   );
 }
+
