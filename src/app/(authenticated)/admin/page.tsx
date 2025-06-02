@@ -85,8 +85,10 @@ export default function AdminPage() {
   const [viewingCalcData, setViewingCalcData] = useState<CalculatorData | null>(null);
   const [viewingCalcDataType, setViewingCalcDataType] = useState<"Calc1" | "Calc2" | null>(null);
   
-  // User Search State
+  // Search States
   const [userSearchTerm, setUserSearchTerm] = useState("");
+  const [calc1SearchTerm, setCalc1SearchTerm] = useState("");
+  const [calc2SearchTerm, setCalc2SearchTerm] = useState("");
 
 
   const fetchData = async () => {
@@ -131,6 +133,24 @@ export default function AdminPage() {
       user.matricula.toLowerCase().includes(userSearchTerm.toLowerCase())
     );
   }, [users, userSearchTerm]);
+
+  const filteredCalc1Data = useMemo(() => {
+    if (!calc1SearchTerm) {
+      return calc1Data;
+    }
+    return calc1Data.filter(data =>
+      data.matricula.toLowerCase().includes(calc1SearchTerm.toLowerCase())
+    );
+  }, [calc1Data, calc1SearchTerm]);
+
+  const filteredCalc2Data = useMemo(() => {
+    if (!calc2SearchTerm) {
+      return calc2Data;
+    }
+    return calc2Data.filter(data =>
+      data.matricula.toLowerCase().includes(calc2SearchTerm.toLowerCase())
+    );
+  }, [calc2Data, calc2SearchTerm]);
 
 
   const handleAdminAction = (action: string) => {
@@ -342,7 +362,7 @@ export default function AdminPage() {
             </Dialog>
           </div>
            <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Buscar usuários por matrícula ou nome..."
@@ -476,6 +496,16 @@ export default function AdminPage() {
       <Card>
         <CardHeader>
           <CardTitle>Resultados - Calculadora 1</CardTitle>
+            <div className="relative mt-4">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Buscar por matrícula..."
+                  value={calc1SearchTerm}
+                  onChange={(e) => setCalc1SearchTerm(e.target.value)}
+                  className="pl-8 w-full"
+                />
+            </div>
         </CardHeader>
         <CardContent>
           {loadingData ? <p>Carregando dados da Calculadora 1...</p> : (
@@ -488,7 +518,7 @@ export default function AdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {calc1Data.map((data) => (
+                {filteredCalc1Data.map((data) => (
                   <TableRow key={data.id}>
                     <TableCell>{data.matricula}</TableCell>
                     <TableCell>{data.updatedAt?.toDate().toLocaleString('pt-BR') || 'N/A'}</TableCell>
@@ -528,6 +558,16 @@ export default function AdminPage() {
       <Card>
         <CardHeader>
           <CardTitle>Resultados - Calculadora 2</CardTitle>
+           <div className="relative mt-4">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Buscar por matrícula..."
+                  value={calc2SearchTerm}
+                  onChange={(e) => setCalc2SearchTerm(e.target.value)}
+                  className="pl-8 w-full"
+                />
+            </div>
         </CardHeader>
         <CardContent>
           {loadingData ? <p>Carregando dados da Calculadora 2...</p> : (
@@ -540,7 +580,7 @@ export default function AdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {calc2Data.map((data) => (
+                {filteredCalc2Data.map((data) => (
                   <TableRow key={data.id}>
                     <TableCell>{data.matricula}</TableCell>
                     <TableCell>{data.updatedAt?.toDate().toLocaleString('pt-BR') || 'N/A'}</TableCell>
@@ -614,5 +654,3 @@ service cloud.firestore {
     </div>
   );
 }
-
-    
