@@ -1,0 +1,24 @@
+{
+  "name": "Doce Acesso",
+  "short_name": "DoceAcesso",
+  "description": "Doce Acesso - App de calculadoras temáticas Moranguinho",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "theme_color": "#FAD2E1",
+  "background_color": "#FAD2E1",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait"
+}
