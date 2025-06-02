@@ -27,7 +27,7 @@ const GradesParserOutputSchema = z.object({
   parsedEntries: z.array(ParsedGradeEntrySchema).describe("An array of parsed matricula and raw grade strings."),
 });
 
-export const ProcessGradesInputSchema = z.object({
+const ProcessGradesInputSchema = z.object({
   turmaId: z.string().describe("The ID of the class/turma."),
   disciplinaId: z.string().describe("The ID of the subject/disciplina."),
   provaId: z.string().describe("The ID of the exam/prova."),
@@ -35,7 +35,7 @@ export const ProcessGradesInputSchema = z.object({
 });
 export type ProcessGradesInput = z.infer<typeof ProcessGradesInputSchema>;
 
-export const ProcessedGradeItemSchema = z.object({
+const ProcessedGradeItemSchema = z.object({
   originalLine: z.string().optional().describe("The original line from the input text if available."),
   matricula: z.string().describe("The student's matricula (ID number)."),
   gradeRaw: z.string().describe("The raw grade string as parsed from the input."),
@@ -47,7 +47,7 @@ export const ProcessedGradeItemSchema = z.object({
 });
 export type ProcessedGradeItem = z.infer<typeof ProcessedGradeItemSchema>;
 
-export const ProcessGradesOutputSchema = z.object({
+const ProcessGradesOutputSchema = z.object({
   processedEntries: z.array(ProcessedGradeItemSchema).describe("An array of processed grade entries."),
   summary: z.object({
     totalLines: z.number(),
