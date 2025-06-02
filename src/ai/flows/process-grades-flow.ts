@@ -37,7 +37,7 @@ const GradesParserOutputSchema = z.object({
 });
 
 // Input for the overall flow / exported function
-const ProcessGradesInputSchema = z.object({
+export const ProcessGradesInputSchema = z.object({
   turmaId: z.string().describe("The ID of the class/turma."),
   disciplinaId: z.string().describe("The ID of the subject/disciplina."),
   provaId: z.string().describe("The ID of the exam/prova."),
@@ -59,7 +59,7 @@ const ProcessGradesInputSchema = z.object({
 export type ProcessGradesInput = z.infer<typeof ProcessGradesInputSchema>;
 
 
-const ProcessedGradeItemSchema = z.object({
+export const ProcessedGradeItemSchema = z.object({
   originalLine: z.string().optional().describe("The original line from the input text if available (only for text source)."),
   matricula: z.string().describe("The student's matricula (ID number)."),
   gradeRaw: z.string().describe("The raw grade string as parsed from the input."),
@@ -71,7 +71,7 @@ const ProcessedGradeItemSchema = z.object({
 });
 export type ProcessedGradeItem = z.infer<typeof ProcessedGradeItemSchema>;
 
-const ProcessGradesOutputSchema = z.object({
+export const ProcessGradesOutputSchema = z.object({
   processedEntries: z.array(ProcessedGradeItemSchema).describe("An array of processed grade entries."),
   summary: z.object({
     totalSourceEntries: z.number().describe("Number of lines if text input, or number of successfully parsed entries if file input."),
@@ -90,27 +90,31 @@ const gradesParserPrompt = ai.definePrompt({
   input: { schema: GradesParserPromptInputSchema },
   output: { schema: GradesParserOutputSchema },
   prompt: `Você é um assistente especializado em analisar dados de alunos para extrair matrículas e suas respectivas notas.
-Os dados podem vir de texto colado ou de um arquivo (imagem ou PDF).
+Sua principal tarefa é identificar corretamente cada matrícula e a nota associada a ela, preservando a relação par-a-par.
 
 {{#if (eq inputType "file")}}
-A entrada é um arquivo. Realize OCR se for uma imagem. Analise o conteúdo do arquivo para identificar pares de matrícula e nota.
+A entrada é um arquivo (imagem ou PDF). Analise o conteúdo visual e textual do arquivo para identificar pares de matrícula e nota.
+Preste muita atenção ao layout. Matrículas e notas podem estar em colunas adjacentes, ou uma matrícula pode estar em uma linha e a nota correspondente na mesma linha, mas em uma coluna diferente, ou até mesmo em uma linha subsequente próxima e claramente associada.
+Realize OCR se for uma imagem. O objetivo é extrair a matrícula e a nota que estão visualmente ou contextualmente ligadas.
 Arquivo fornecido: {{media url=fileDataUri}} (Tipo: {{fileMimeType}})
 {{else}}
-A entrada é texto colado. Analise o texto para identificar pares de matrícula e nota.
+A entrada é texto colado. Analise o texto para identificar pares de matrícula e nota em cada linha.
 Texto para processar:
 {{{textData}}}
 {{/if}}
 
-Cada linha ou entrada detectada geralmente representa um aluno. A matrícula e a nota podem ser separadas por espaços, dois pontos (:) ou tabs.
-Ignore linhas em branco ou linhas que não pareçam conter uma matrícula e uma nota.
+Cada entrada detectada (seja uma linha de texto ou um par identificado visualmente em um arquivo) geralmente representa um aluno.
+A matrícula e a nota podem ser separadas por espaços, dois pontos (:), tabs, ou simplesmente estarem em colunas/áreas próximas no caso de arquivos.
+Ignore linhas em branco, cabeçalhos de tabela ou linhas que não pareçam conter uma matrícula e uma nota.
 Matrículas são tipicamente sequências de números ou alfanuméricas. Notas são tipicamente números, podendo ter casas decimais (usando ponto ou vírgula como separador decimal).
 
-Exemplo de extração esperada (independente da fonte):
-- Matrícula "12345", Nota Bruta "9.5"
-- Matrícula "67890", Nota Bruta "8,0"
-- Matrícula "ABC01", Nota Bruta "7"
+Exemplo de extração esperada (independente da fonte, mas crucial para arquivos):
+- Se uma linha de um PDF/imagem mostra "Matrícula: 12345 | Nota: 9.5", extraia: Matrícula "12345", Nota Bruta "9.5"
+- Se uma tabela tem "67890" em uma célula e "8,0" na célula ao lado na mesma linha, extraia: Matrícula "67890", Nota Bruta "8,0"
+- Se um texto diz "Aluno ABC01 tirou 7", extraia: Matrícula "ABC01", Nota Bruta "7"
 
-Seu objetivo é retornar uma lista de objetos, cada um contendo 'matricula' e 'gradeRaw' para cada entrada que você conseguir identificar.
+Seu objetivo é retornar uma lista de objetos, cada um contendo 'matricula' e 'gradeRaw' para cada par que você conseguir identificar com confiança.
+Certifique-se de que a 'matricula' e 'gradeRaw' em cada objeto realmente pertencem uma à outra no documento original.
 `,
 });
 
@@ -157,19 +161,32 @@ const processGradesFlow = ai.defineFlow(
         const lines = input.source.content.split('\n').filter(line => line.trim() !== '');
         summary.totalSourceEntries = lines.length;
         lines.forEach(line => {
-            const parts = line.trim().split(/[\s:]+/);
+            const parts = line.trim().split(/[\s:]+/); // Basic split, might need refinement
+            let matricula = "N/A";
+            let gradeRaw = "";
+
             if (parts.length >= 2) {
+                matricula = parts[0];
+                gradeRaw = parts.slice(1).join(' ');
                  finalProcessedEntries.push({
                     originalLine: line,
-                    matricula: parts[0],
-                    gradeRaw: parts.slice(1).join(' '),
+                    matricula: matricula,
+                    gradeRaw: gradeRaw,
                     status: 'parsed',
                  });
                  summary.successfullyParsed++;
-            } else {
+            } else if (parts.length === 1 && parts[0].length > 0) { // If only one part, assume it's matricula and grade is missing or error
                  finalProcessedEntries.push({
                     originalLine: line,
-                    matricula: line,
+                    matricula: parts[0],
+                    gradeRaw: "",
+                    status: 'unknown_error',
+                    message: 'Não foi possível extrair matrícula e nota da linha (fallback). Linha curta.',
+                });
+            } else { // Line is effectively empty or unparseable by simple split
+                 finalProcessedEntries.push({
+                    originalLine: line,
+                    matricula: line, // Store full line as matricula if completely unparseable
                     gradeRaw: "",
                     status: 'unknown_error',
                     message: 'Não foi possível extrair matrícula e nota da linha (fallback).',
@@ -178,7 +195,7 @@ const processGradesFlow = ai.defineFlow(
         });
       } else {
         // No reliable fallback for file if LLM parsing fails to produce entries
-        summary.totalSourceEntries = 0; // Or perhaps 1 if we consider the file itself as one entry
+        summary.totalSourceEntries = 0; 
       }
     } else {
         summary.successfullyParsed = parserOutput.parsedEntries.length;
@@ -188,7 +205,9 @@ const processGradesFlow = ai.defineFlow(
                 matricula: entry.matricula,
                 gradeRaw: entry.gradeRaw,
                 status: 'parsed',
-                originalLine: input.source.type === 'text' ? input.source.content.split('\n').find(l => l.includes(entry.matricula) && l.includes(entry.gradeRaw)) : undefined, // Attempt to find original line for text
+                originalLine: input.source.type === 'text' 
+                    ? input.source.content.split('\n').find(l => l.includes(entry.matricula) && l.includes(entry.gradeRaw)) || `Linha para ${entry.matricula}` 
+                    : undefined,
             });
         });
     }
@@ -197,6 +216,24 @@ const processGradesFlow = ai.defineFlow(
     for (let i = 0; i < finalProcessedEntries.length; i++) {
       const entry = finalProcessedEntries[i];
       if (entry.status !== 'parsed') continue;
+
+      // Ensure matricula and gradeRaw are strings before further processing
+      entry.matricula = String(entry.matricula || "").trim();
+      entry.gradeRaw = String(entry.gradeRaw || "").trim();
+
+
+      if (!entry.matricula) {
+        entry.status = 'unknown_error';
+        entry.message = 'Matrícula não extraída ou vazia.';
+        continue;
+      }
+      if (!entry.gradeRaw) {
+        entry.status = 'invalid_grade_format';
+        entry.message = `Nota não extraída ou vazia para matrícula ${entry.matricula}.`;
+        summary.invalidGradeFormat++;
+        continue;
+      }
+
 
       const gradeStringNormalized = entry.gradeRaw.replace(',', '.');
       const gradeNumeric = parseFloat(gradeStringNormalized);
@@ -218,6 +255,14 @@ const processGradesFlow = ai.defineFlow(
 
       try {
         const usersRef = collection(db, 'users');
+        // Ensure matricula is a non-empty string before querying
+        if (!entry.matricula) {
+            entry.status = 'invalid_matricula';
+            entry.message = `Matrícula está vazia.`;
+            summary.invalidMatricula++;
+            continue;
+        }
+
         const q = query(usersRef, where('matricula', '==', entry.matricula), limit(1));
         const querySnapshot = await getDocs(q);
 
@@ -245,3 +290,4 @@ const processGradesFlow = ai.defineFlow(
 export async function processPastedGrades(input: ProcessGradesInput): Promise<ProcessGradesOutput> {
   return processGradesFlow(input);
 }
+
