@@ -168,14 +168,12 @@ export default function LancarNotasPage() {
         if (typeof result === 'string') {
           if (file.type.startsWith('text/')) {
             setGradesPasted(result);
-            setSelectedFileForAI(null); // Clear any selected image/pdf
+            setSelectedFileForAI(null); 
             toast({ title: "Conteúdo do Arquivo de Texto Carregado", description: "O texto do arquivo foi colado na área abaixo." });
           } else if (file.type.startsWith('image/') || file.type === 'application/pdf') {
             setSelectedFileForAI({ name: file.name, type: file.type, dataUri: result });
-            setGradesPasted(""); // Clear any pasted text
+            setGradesPasted(""); 
             toast({ title: `Arquivo ${file.type.startsWith('image/') ? 'de Imagem' : 'PDF'} Carregado`, description: `Arquivo "${file.name}" pronto para processamento pela IA.` });
-          } else {
-            toast({ title: "Tipo de Arquivo Não Suportado", description: "Por favor, selecione um arquivo de texto, imagem ou PDF.", variant: "destructive" });
           }
         } else {
           toast({ title: "Erro ao Ler Arquivo", description: "Não foi possível ler o conteúdo do arquivo.", variant: "destructive" });
@@ -186,12 +184,10 @@ export default function LancarNotasPage() {
       };
       
       if (file.type.startsWith('text/') || file.type.startsWith('image/') || file.type === 'application/pdf') {
-        reader.readAsDataURL(file); // Read as data URL for all relevant types to get base64
-                                  // For text, we'll extract the text part from data URI if needed, but readAsText is simpler
-                                  // Let's adjust: use readAsText for text, readAsDataURL for image/pdf
+        // REMOVED the problematic reader.readAsDataURL(file); that was here.
         if (file.type.startsWith('text/')) {
           reader.readAsText(file);
-        } else {
+        } else { // This covers image/* and application/pdf
           reader.readAsDataURL(file);
         }
       } else {
@@ -199,7 +195,7 @@ export default function LancarNotasPage() {
       }
     }
     if (event.target) {
-      event.target.value = ""; // Reset file input
+      event.target.value = ""; 
     }
   };
 
@@ -232,7 +228,6 @@ export default function LancarNotasPage() {
         content: gradesPasted,
       };
     } else {
-      // This case should be caught by the check above, but as a safeguard:
       toast({ title: "Erro Interno", description: "Nenhuma fonte de dados para processar.", variant: "destructive" });
       setIsProcessingAI(false);
       return;
@@ -265,14 +260,14 @@ export default function LancarNotasPage() {
   const handleClearSelectedFile = () => {
     setSelectedFileForAI(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = ""; // Attempt to clear the actual file input
+      fileInputRef.current.value = ""; 
     }
   };
 
   const handleGradesPastedChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setGradesPasted(e.target.value);
     if (selectedFileForAI) {
-      setSelectedFileForAI(null); // Clear selected file if user types in textarea
+      setSelectedFileForAI(null); 
     }
   };
 
@@ -580,3 +575,4 @@ export default function LancarNotasPage() {
     </div>
   );
 }
+    
