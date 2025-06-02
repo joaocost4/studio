@@ -14,16 +14,16 @@ import {
   CalendarDays,
   BarChart3,
   PackagePlus,
-  Users, // Changed icon for the button
-  Briefcase // Fallback or general admin icon
+  Users, 
+  Briefcase 
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useRouter } from "next/navigation"; // Import useRouter
+import { useRouter } from "next/navigation"; 
 
 export default function ManagementPage() {
   const { userProfile } = useAuth();
   useRequireAuth({ allowedRoles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] });
-  const router = useRouter(); // Initialize useRouter
+  const router = useRouter(); 
 
   if (!userProfile || !(userProfile.role === USER_ROLES.ADMIN || userProfile.role === USER_ROLES.REPRESENTATIVE)) {
      return (
@@ -44,7 +44,7 @@ export default function ManagementPage() {
   };
 
   const isAdmin = userProfile.role === USER_ROLES.ADMIN;
-  const PageIconComponent = isAdmin ? Briefcase : ClipboardSignature; // Different main icon for Admin vs Rep
+  const PageIconComponent = isAdmin ? Briefcase : ClipboardSignature; 
   const pageTitle = isAdmin ? "Página de Gestão Avançada" : "Painel do Representante de Turma";
   const pageDescription = isAdmin 
     ? "Ferramentas administrativas e de gestão de representantes."
