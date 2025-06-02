@@ -118,14 +118,8 @@ export default function ManagementPage() {
             <Button variant="secondary" onClick={() => handleManagementAction("Visualizar Calendário Acadêmico")} className="w-full">
               <CalendarDays className="mr-2 h-5 w-5" /> Calendário Acadêmico
             </Button>
-            <Button variant="outline" onClick={() => handleManagementAction("Painel de Desempenho da Turma")} className="w-full">
-              <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma
-            </Button>
-             <Button variant="default" onClick={() => handleManagementAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
-              <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
-            </Button>
 
-            {/* Botão Adicionar Aluno à Turma para Representantes */}
+            {/* Botão Adicionar Aluno à Turma para Representantes - Movido para cá */}
             {canAddStudentToTurma && (
               <Dialog open={isAddStudentToTurmaDialogOpen} onOpenChange={(isOpen) => {
                 setIsAddStudentToTurmaDialogOpen(isOpen);
@@ -174,6 +168,13 @@ export default function ManagementPage() {
                 </DialogContent>
               </Dialog>
             )}
+
+            <Button variant="outline" onClick={() => handleManagementAction("Painel de Desempenho da Turma")} className="w-full">
+              <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma
+            </Button>
+             <Button variant="default" onClick={() => handleManagementAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
+              <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
+            </Button>
           </div>
 
            {isAdmin && (
