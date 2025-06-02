@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +34,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { collection, query, where, getDocs, doc, updateDoc, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
+
+interface TurmaData {
+  id: string;
+  nome: string;
+  ativa: boolean;
+  createdAt?: Timestamp;
+}
 
 export default function ManagementPage() {
   const { userProfile } = useAuth();
@@ -43,8 +54,38 @@ export default function ManagementPage() {
 
   const [isAddStudentToTurmaDialogOpen, setIsAddStudentToTurmaDialogOpen] = useState(false);
   const [studentMatriculaToAdd, setStudentMatriculaToAdd] = useState("");
+  const [adminSelectedTurmaId, setAdminSelectedTurmaId] = useState<string | undefined>(undefined);
+  const [activeTurmas, setActiveTurmas] = useState<TurmaData[]>([]);
+  const [loadingTurmas, setLoadingTurmas] = useState(false);
+  const [isProcessingAssignment, setIsProcessingAssignment] = useState(false);
 
-  if (!userProfile || !(userProfile.role === USER_ROLES.ADMIN || userProfile.role === USER_ROLES.REPRESENTATIVE)) {
+  const isAdmin = userProfile?.role === USER_ROLES.ADMIN;
+  const isRepresentative = userProfile?.role === USER_ROLES.REPRESENTATIVE;
+
+  const fetchActiveTurmas = useCallback(async () => {
+    if (!isAdmin) return; // Only admins need to fetch all turmas for selection
+    setLoadingTurmas(true);
+    try {
+      const turmasQuery = query(collection(db, "turmas"), where("ativa", "==", true));
+      const turmasSnapshot = await getDocs(turmasQuery);
+      const turmasList = turmasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TurmaData));
+      setActiveTurmas(turmasList);
+    } catch (error) {
+      console.error("Error fetching active turmas:", error);
+      toast({ title: "Erro ao buscar turmas", description: "Não foi possível carregar a lista de turmas ativas.", variant: "destructive" });
+    } finally {
+      setLoadingTurmas(false);
+    }
+  }, [isAdmin, toast]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchActiveTurmas();
+    }
+  }, [isAdmin, fetchActiveTurmas]);
+
+
+  if (!userProfile || !(isAdmin || isRepresentative)) {
      return (
       <div className="container mx-auto py-8 px-4 text-center">
         <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
@@ -54,35 +95,87 @@ export default function ManagementPage() {
     );
   }
   
-  const handleManagementAction = (action: string, details?: any) => {
-    if (action === "Gerir Turmas") {
-      router.push('/admin/turmas');
-    } else if (action === "Adicionar Aluno à Turma") {
-      // This is the simulation part, actual logic would involve Firestore updates
+  const handleSimulatedAction = (action: string) => {
+    toast({
+      title: "Ação Simulada",
+      description: `Ação de gestão "${action}" executada! (Simulação)`,
+    });
+  };
+
+  const handleAssignStudentToTurma = async () => {
+    if (!studentMatriculaToAdd.trim()) {
+      toast({ title: "Matrícula Necessária", description: "Por favor, insira a matrícula do aluno.", variant: "destructive" });
+      return;
+    }
+
+    let targetTurmaId: string | undefined = undefined;
+    let targetTurmaName: string | undefined = undefined;
+
+    if (isAdmin) {
+      if (!adminSelectedTurmaId) {
+        toast({ title: "Turma Necessária", description: "Por favor, selecione a turma de destino.", variant: "destructive" });
+        return;
+      }
+      targetTurmaId = adminSelectedTurmaId;
+      targetTurmaName = activeTurmas.find(t => t.id === targetTurmaId)?.nome || "Turma Desconhecida";
+    } else if (isRepresentative && userProfile.turmaId && userProfile.turmaNome) {
+      targetTurmaId = userProfile.turmaId;
+      targetTurmaName = userProfile.turmaNome;
+    }
+
+    if (!targetTurmaId) {
+      toast({ title: "Erro de Configuração", description: "Não foi possível determinar a turma de destino.", variant: "destructive" });
+      return;
+    }
+
+    setIsProcessingAssignment(true);
+    try {
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("matricula", "==", studentMatriculaToAdd.trim()));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        toast({ title: "Aluno Não Encontrado", description: `Nenhum aluno encontrado com a matrícula "${studentMatriculaToAdd}".`, variant: "destructive" });
+        setIsProcessingAssignment(false);
+        return;
+      }
+
+      // Assuming matricula is unique, update the first found user.
+      const userToUpdateDoc = querySnapshot.docs[0];
+      const userToUpdateRef = doc(db, "users", userToUpdateDoc.id);
+      
+      await updateDoc(userToUpdateRef, {
+        turmaId: targetTurmaId,
+      });
+
       toast({
-        title: "Ação Simulada",
-        description: `Aluno com matrícula "${details.matricula}" seria adicionado à turma "${userProfile?.turmaNome}". (Simulação)`,
+        title: "Sucesso!",
+        description: `Aluno ${userToUpdateDoc.data().nomeCompleto || studentMatriculaToAdd} foi atribuído à turma "${targetTurmaName}".`,
       });
       setIsAddStudentToTurmaDialogOpen(false);
       setStudentMatriculaToAdd("");
-    }
-     else {
-      toast({
-        title: "Ação Simulada",
-        description: `Ação de gestão "${action}" executada! (Simulação)`,
-      });
+      if (isAdmin) setAdminSelectedTurmaId(undefined);
+
+    } catch (error: any) {
+      console.error("Error assigning student to turma:", error);
+      let errMsg = "Ocorreu um erro ao tentar atribuir o aluno à turma.";
+      if (error.code === 'permission-denied') {
+        errMsg = "Permissão negada para atualizar o aluno. Verifique as regras do Firestore.";
+      }
+      toast({ title: "Erro na Atribuição", description: errMsg, variant: "destructive" });
+    } finally {
+      setIsProcessingAssignment(false);
     }
   };
 
-  const isAdmin = userProfile.role === USER_ROLES.ADMIN;
-  const isRepresentative = userProfile.role === USER_ROLES.REPRESENTATIVE;
+
   const PageIconComponent = isAdmin ? Briefcase : ClipboardSignature; 
   const pageTitle = isAdmin ? "Página de Gestão Avançada" : "Painel do Representante de Turma";
   const pageDescription = isAdmin 
     ? "Ferramentas administrativas e de gestão de representantes."
     : "Ferramentas e recursos para auxiliar na gestão da turma de Medicina.";
 
-  const canAddStudentToTurma = isRepresentative && userProfile?.turmaId && userProfile?.turmaNome;
+  const canAddStudentToTurma = (isRepresentative && userProfile?.turmaId && userProfile?.turmaNome) || isAdmin;
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -106,42 +199,45 @@ export default function ManagementPage() {
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Button variant="default" onClick={() => handleManagementAction("Lançar Notas da Turma")} className="w-full bg-primary hover:bg-primary/90">
+            <Button variant="default" onClick={() => handleSimulatedAction("Lançar Notas da Turma")} className="w-full bg-primary hover:bg-primary/90">
               <ClipboardSignature className="mr-2 h-5 w-5" /> Lançar Notas da Turma
             </Button>
-            <Button variant="secondary" onClick={() => handleManagementAction("Imprimir Lista de Chamada")} className="w-full">
+            <Button variant="secondary" onClick={() => handleSimulatedAction("Imprimir Lista de Chamada")} className="w-full">
               <Printer className="mr-2 h-5 w-5" /> Imprimir Lista de Chamada
             </Button>
-            <Button variant="outline" onClick={() => handleManagementAction("Gerenciar Comunicados da Turma")} className="w-full">
+            <Button variant="outline" onClick={() => handleSimulatedAction("Gerenciar Comunicados da Turma")} className="w-full">
               <Megaphone className="mr-2 h-5 w-5" /> Gerenciar Comunicados
             </Button>
-            <Button variant="default" onClick={() => handleManagementAction("Agendar Reuniões")} className="w-full bg-primary/80 hover:bg-primary/70">
+            <Button variant="default" onClick={() => handleSimulatedAction("Agendar Reuniões")} className="w-full bg-primary/80 hover:bg-primary/70">
               <CalendarPlus className="mr-2 h-5 w-5" /> Agendar Reuniões
             </Button>
-            <Button variant="secondary" onClick={() => handleManagementAction("Visualizar Calendário Acadêmico")} className="w-full">
+            <Button variant="secondary" onClick={() => handleSimulatedAction("Visualizar Calendário Acadêmico")} className="w-full">
               <CalendarDays className="mr-2 h-5 w-5" /> Calendário Acadêmico
             </Button>
-
-            <Button variant="outline" onClick={() => handleManagementAction("Painel de Desempenho da Turma")} className="w-full">
+            <Button variant="outline" onClick={() => handleSimulatedAction("Painel de Desempenho da Turma")} className="w-full">
               <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma
             </Button>
-
-            {/* Botão "Adicionar à Minha Turma" (antigo "Teste") agora abre o diálogo */}
+            
             {canAddStudentToTurma && (
               <Dialog open={isAddStudentToTurmaDialogOpen} onOpenChange={(isOpen) => {
                 setIsAddStudentToTurmaDialogOpen(isOpen);
-                if (!isOpen) setStudentMatriculaToAdd(""); 
+                if (!isOpen) {
+                  setStudentMatriculaToAdd("");
+                  if (isAdmin) setAdminSelectedTurmaId(undefined);
+                }
               }}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full"> {/* Styling from "Teste" button, text changed */}
-                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Minha Turma
+                  <Button variant="outline" className="w-full">
+                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Turma
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle>Adicionar Aluno à Turma</DialogTitle>
                     <DialogDescription>
-                      Insira a matrícula do aluno que deseja adicionar à sua turma: <strong className="text-primary">{userProfile?.turmaNome}</strong>.
+                      {isAdmin 
+                        ? "Insira a matrícula do aluno e selecione a turma de destino."
+                        : `Insira a matrícula do aluno que deseja adicionar à sua turma: ${userProfile?.turmaNome}.`}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
@@ -157,26 +253,50 @@ export default function ManagementPage() {
                         placeholder="Matrícula do Aluno"
                       />
                     </div>
-                     <p className="text-sm text-muted-foreground col-span-4">
-                        Você está adicionando à turma: <span className="font-semibold text-foreground">{userProfile?.turmaNome}</span>.
-                        Esta ação é uma simulação e necessita implementação do backend.
-                    </p>
+                    {isAdmin && (
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="admin-select-turma" className="text-right">
+                          Turma
+                        </Label>
+                        {loadingTurmas ? (
+                            <div className="col-span-3 flex items-center"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando turmas...</div>
+                        ) : (
+                            <Select value={adminSelectedTurmaId} onValueChange={setAdminSelectedTurmaId}>
+                                <SelectTrigger className="col-span-3">
+                                    <SelectValue placeholder="Selecione a turma de destino" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {activeTurmas.map(turma => (
+                                        <SelectItem key={turma.id} value={turma.id}>{turma.nome}</SelectItem>
+                                    ))}
+                                    {activeTurmas.length === 0 && <p className="p-2 text-sm text-muted-foreground">Nenhuma turma ativa encontrada.</p>}
+                                </SelectContent>
+                            </Select>
+                        )}
+                      </div>
+                    )}
+                    {!isAdmin && isRepresentative && (
+                        <p className="text-sm text-muted-foreground col-span-4 text-center">
+                            Atribuindo à sua turma: <span className="font-semibold text-foreground">{userProfile?.turmaNome}</span>.
+                        </p>
+                    )}
                   </div>
                   <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setIsAddStudentToTurmaDialogOpen(false)}>Cancelar</Button>
+                    <Button type="button" variant="outline" onClick={() => setIsAddStudentToTurmaDialogOpen(false)} disabled={isProcessingAssignment}>Cancelar</Button>
                     <Button 
                       type="button" 
-                      onClick={() => handleManagementAction("Adicionar Aluno à Turma", { matricula: studentMatriculaToAdd })}
-                      disabled={!studentMatriculaToAdd.trim()}
+                      onClick={handleAssignStudentToTurma}
+                      disabled={!studentMatriculaToAdd.trim() || (isAdmin && !adminSelectedTurmaId) || isProcessingAssignment || (isAdmin && loadingTurmas)}
                     >
-                      Adicionar Aluno (Simulação)
+                      {isProcessingAssignment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {isProcessingAssignment ? "Atribuindo..." : "Atribuir Aluno"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
             )}
             
-             <Button variant="default" onClick={() => handleManagementAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
+            <Button variant="default" onClick={() => handleSimulatedAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
               <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
             </Button>
           </div>
@@ -185,10 +305,10 @@ export default function ManagementPage() {
             <div className="mt-6 p-4 border border-dashed border-primary/30 rounded-md bg-primary/5">
               <h3 className="text-xl font-semibold text-primary/80 mb-2">Funções Exclusivas de Admin:</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => handleManagementAction("Gerir Turmas")}>
+                <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => router.push('/admin/turmas')}>
                   <Users className="mr-2 h-5 w-5" /> Gerir Turmas
                 </Button>
-                <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => handleManagementAction("Auditoria do Sistema")}>
+                <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => handleSimulatedAction("Auditoria do Sistema")}>
                   Auditoria do Sistema (Simulação)
                 </Button>
               </div>
@@ -198,10 +318,9 @@ export default function ManagementPage() {
           <div className="mt-6 p-4 border border-dashed border-secondary/30 rounded-md bg-secondary/5">
             <h3 className="text-xl font-semibold text-secondary-foreground/80 mb-2">Avisos e Próximos Passos:</h3>
             <ul className="list-disc list-inside text-sm text-secondary-foreground/70 space-y-1">
-              <li>As funcionalidades apresentadas são simulações. O desenvolvimento completo é necessário para torná-las operacionais.</li>
-              <li>Considere integrar com sistemas acadêmicos reais para lançamento de notas e listas de chamada.</li>
-              <li>A gestão de comunicados pode envolver notificações por email ou dentro da plataforma.</li>
-              <li>A funcionalidade "Adicionar Aluno à Turma" atualmente simula a ação. Seria necessário integrar com o Firestore para atualizar o `turmaId` do aluno especificado.</li>
+              <li>As funcionalidades de "Lançar Notas", "Imprimir Chamada", etc., são simulações. O desenvolvimento completo é necessário para torná-las operacionais.</li>
+              <li>A funcionalidade "Adicionar Aluno à Turma" agora interage com o Firestore para atualizar o `turmaId` do aluno especificado.</li>
+              <li>Certifique-se de que as regras de segurança do Firestore permitem que administradores e representantes realizem as operações necessárias.</li>
             </ul>
           </div>
         </CardContent>
@@ -209,3 +328,4 @@ export default function ManagementPage() {
     </div>
   );
 }
+
