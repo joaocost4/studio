@@ -130,11 +130,14 @@ export default function AttendanceListPage() {
       <style jsx global>{`
         @media print {
           body {
-            -webkit-print-color-adjust: exact; /* Chrome, Safari */
-            color-adjust: exact; /* Firefox, Edge */
+            -webkit-print-color-adjust: exact;
+            color-adjust: exact;
+            background-color: #ffffff !important; /* Ensure white background for body */
           }
           body * {
             visibility: hidden;
+            background-color: transparent !important; /* Avoid unwanted backgrounds */
+            color: #000000 !important; /* Default all text to black */
           }
           .printable-area, .printable-area * {
             visibility: visible;
@@ -145,7 +148,8 @@ export default function AttendanceListPage() {
             top: 0;
             width: 100%;
             margin: 0;
-            padding: 20px; /* Standard padding for print */
+            padding: 20px; 
+            background-color: #ffffff !important;
           }
           .no-print {
             display: none !important;
@@ -153,42 +157,38 @@ export default function AttendanceListPage() {
           table {
             width: 100% !important;
             border-collapse: collapse !important;
-            font-size: 10pt; /* Adjust font size for print if needed */
+            font-size: 10pt; 
           }
           th, td {
-            border: 1px solid #000 !important; /* Black border for print */
-            padding: 6px !important; /* Adjust padding for print */
+            border: 1px solid #000000 !important;
+            padding: 6px !important;
             text-align: left !important;
+            color: #000000 !important;
           }
           th {
-            background-color: #e9ecef !important; /* Lighter gray for headers, more printer-friendly */
+            background-color: #f0f0f0 !important; /* Light gray for headers, printer-friendly */
+            color: #000000 !important;
           }
-          /* Ensure table fits on page, might need further adjustments based on content */
+          /* Ensure table rows have white background */
+          tr {
+            background-color: #ffffff !important;
+          }
           @page {
             size: A4 portrait; 
-            margin: 15mm; /* Standard margin, adjust as needed */
+            margin: 15mm;
           }
-           /* Hide header/footer provided by browser if desired */
-          /*
-          @page {
-            margin: 0; 
-          }
-          body {
-            margin: 1.6cm;
-          }
-          */
         }
       `}</style>
 
     <div className="printable-area">
       <Card className="print:shadow-none print:border-none print:bg-white">
-        <CardHeader className="print:mb-4">
+        <CardHeader className="print:mb-4 print:text-black">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center print:flex-row print:justify-between print:items-center">
             <div>
                 <CardTitle className="text-2xl md:text-3xl font-bold text-primary print:text-black print:text-xl">
                     Lista de Chamada
                 </CardTitle>
-                <CardDescription className="text-md print:text-black print:text-sm">
+                <CardDescription className="text-md text-muted-foreground print:text-black print:text-sm">
                     Turma: {turmaInfo.nome} <br/>
                     Data: {currentDate}
                 </CardDescription>
@@ -216,19 +216,19 @@ export default function AttendanceListPage() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {students.map((student, index) => (
-                    <TableRow key={student.id} className={index % 2 === 0 ? 'print:bg-white' : 'print:bg-slate-50'}>
+                    {students.map((student) => (
+                    <TableRow key={student.id}>
                         <TableCell>{student.matricula}</TableCell>
                         <TableCell>{student.nomeCompleto}</TableCell>
-                        <TableCell className="h-[38px] print:h-[1.5cm]"></TableCell> {/* Empty cell for presence */}
-                        <TableCell className="h-[38px] print:h-[1.5cm]"></TableCell> {/* Empty cell for signature */}
+                        <TableCell className="h-[38px] print:h-[1.5cm]"></TableCell>
+                        <TableCell className="h-[38px] print:h-[1.5cm]"></TableCell>
                     </TableRow>
                     ))}
                 </TableBody>
                 </Table>
             </div>
           ) : (
-            <p className="text-center text-muted-foreground py-4">
+            <p className="text-center text-muted-foreground py-4 print:text-black">
               Nenhum aluno encontrado para esta turma. Não é possível imprimir uma lista vazia.
             </p>
           )}
