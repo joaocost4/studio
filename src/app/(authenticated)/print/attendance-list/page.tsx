@@ -90,9 +90,9 @@ export default function AttendanceListPage() {
   }
   
   return (
-    <div className="container mx-auto py-8 px-4 print:p-0">
+    <div className="print-container">
       <style jsx global>{`
-        .print-only-logo {
+        .print-only-logo-text-container {
           display: none; 
         }
         .ai-generated-table table {
@@ -102,7 +102,7 @@ export default function AttendanceListPage() {
         }
         .ai-generated-table th, .ai-generated-table td {
           border: 1px solid #000;
-          padding: 6px; /* Ajustado para um padding melhor */
+          padding: 6px; 
           text-align: left;
           vertical-align: middle;
         }
@@ -113,27 +113,35 @@ export default function AttendanceListPage() {
         .ai-generated-table td:nth-child(3), /* Presença */
         .ai-generated-table td:nth-child(4)  /* Assinatura */
         {
-           height: 1cm; /* Altura para assinatura/presença */
+           height: 1cm; 
         }
 
-
         @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            color-adjust: exact;
-            background-color: #ffffff !important;
+          body > *:not(.print-container) {
+            display: none !important;
           }
-          .printable-area, .printable-area * {
-            visibility: visible;
-          }
-          .printable-area {
+          .print-container {
             position: absolute;
             left: 0;
             top: 0;
             width: 100%;
+            height: 100%;
             margin: 0;
-            padding: 20px; 
+            padding: 0;
             background-color: #ffffff !important;
+          }
+          .printable-area, .printable-area * {
+            visibility: visible;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+          }
+          .printable-area {
+            position: static; /* Reset position for print content flow */
+            width: 100%;
+            margin: 0;
+            padding: 20mm 12mm; /* Adjust padding to simulate A4 margins if @page margin is not enough */
+            box-shadow: none !important;
+            border: none !important;
           }
           .no-print {
             display: none !important;
@@ -148,58 +156,62 @@ export default function AttendanceListPage() {
             border: 1px solid #000000 !important;
             padding: 4px !important; 
             text-align: left !important;
-            color: #000000 !important;
             vertical-align: middle; 
-            background-color: #ffffff !important; /* Forçar fundo branco para células */
           }
           .ai-generated-table th {
             background-color: #f0f0f0 !important;
-            color: #000000 !important;
             font-weight: bold;
           }
           .ai-generated-table tr {
-            background-color: #ffffff !important;
             page-break-inside: avoid; 
           }
-          .print-logo-container {
-             display: flex;
-             justify-content: flex-start; 
+
+          .print-logo-and-text-container {
+             display: flex !important;
              align-items: center;
              margin-bottom: 10px; 
           }
           .print-only-logo {
             display: block !important; 
-            width: 50px; 
-            height: 50px;
-            fill: #E30B5D; /* Cor primária do tema Moranguinho */
+            width: 40px; 
+            height: 40px;
+            fill: #E30B5D; 
+            margin-right: 8px;
+          }
+          .print-logo-text {
+            display: inline !important;
+            font-size: 14pt;
+            font-weight: bold;
+            color: #E30B5D !important; /* Primary theme color */
           }
           .print-header-text-container {
             text-align: center; 
             flex-grow: 1;
+            margin-left: -48px; /* Adjust to center considering logo space */
           }
           .print-main-title {
-             font-size: 16pt; font-weight: bold; margin-bottom: 5px; color: #000000 !important;
+             font-size: 16pt; font-weight: bold; margin-bottom: 5px;
           }
           .print-sub-title {
-             font-size: 10pt; color: #000000 !important;
+             font-size: 10pt;
           }
           
           @page {
             size: A4 portrait; 
-            margin: 12mm; 
+            margin: 12mm; /* Standard A4 margins */
           }
         }
       `}</style>
 
-    <div className="printable-area">
-      <Card className="print:shadow-none print:border-none print:bg-white">
-        <CardHeader className="print:p-0 print:mb-2 print:text-black">
-          <div className="print-logo-container">
+    <div className="printable-area container mx-auto py-8 px-4 print:p-0"> {/* Removed print:p-0 to allow @page margins */}
+      <Card className="print:shadow-none print:border-none">
+        <CardHeader className="print:p-0 print:mb-2">
+          <div className="print-logo-and-text-container">
             <StrawberryIcon className="print-only-logo" data-ai-hint="strawberry logo" />
-            {/* O título principal e subtítulos agora serão gerados pela IA e estarão no htmlContentFromAI */}
+            <span className="print-logo-text">Moranguinho</span>
           </div>
           
-          <div className="mt-4 sm:mt-0 flex flex-col sm:flex-row gap-2 no-print absolute top-4 right-4">
+          <div className="mt-4 sm:mt-0 flex flex-col sm:flex-row gap-2 no-print fixed top-4 right-4 z-50"> {/* Added fixed positioning and z-index for screen view */}
               <Button variant="outline" onClick={() => router.back()} disabled={isPrinting}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
               </Button>
@@ -210,7 +222,17 @@ export default function AttendanceListPage() {
         </CardHeader>
         <CardContent className="print:p-0">
           {aiGeneratedOutput?.htmlContent ? (
-            <div className="ai-generated-table" dangerouslySetInnerHTML={{ __html: aiGeneratedOutput.htmlContent }} />
+            <div 
+                className="ai-generated-table" 
+                dangerouslySetInnerHTML={{ __html: `
+                    <div class="print-header-text-container">
+                        ${aiGeneratedOutput.turmaName || aiGeneratedOutput.currentDate ? `<h1 class="print-main-title">Lista de Chamada</h1>` : ''}
+                        ${aiGeneratedOutput.turmaName ? `<h2 class="print-sub-title">Turma: ${aiGeneratedOutput.turmaName}</h2>` : ''}
+                        ${aiGeneratedOutput.currentDate ? `<h2 class="print-sub-title">Data: ${aiGeneratedOutput.currentDate}</h2>` : ''}
+                    </div>
+                    ${aiGeneratedOutput.htmlContent}
+                `}} 
+            />
           ) : (
             <p className="text-center text-muted-foreground py-4 print:text-black">
               Conteúdo da lista de chamada não disponível.
@@ -222,3 +244,4 @@ export default function AttendanceListPage() {
     </div>
   );
 }
+
