@@ -19,7 +19,8 @@ import {
   UserPlus,
   CalendarDays, 
   BookCopy,
-  FlaskConical
+  FlaskConical,
+  UploadCloud
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
@@ -41,6 +42,7 @@ import { db } from "@/lib/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Loader2 } from "lucide-react";
+import Link from "next/link";
 
 
 interface TurmaData {
@@ -98,7 +100,7 @@ export default function ManagementPage() {
   const [selectedDisciplinaIdForProva, setSelectedDisciplinaIdForProva] = useState<string | undefined>(undefined);
   const [newProvaNome, setNewProvaNome] = useState("");
   const [newProvaPeso, setNewProvaPeso] = useState<string>(""); 
-  const [newProvaData, setNewProvaData] = useState<string | undefined>(undefined); // Changed to string
+  const [newProvaData, setNewProvaData] = useState<string | undefined>(undefined); // For text input
   const [isProcessingProva, setIsProcessingProva] = useState(false);
 
 
@@ -327,40 +329,40 @@ export default function ManagementPage() {
         return;
     }
     const pesoNum = parseFloat(newProvaPeso);
-    if (isNaN(pesoNum) || pesoNum <= 0 || pesoNum > 10) {
+    if (isNaN(pesoNum) || pesoNum <= 0 || pesoNum > 10) { // Assuming weight max 10, adjust if needed
         toast({ title: "Peso inválido", description: "O peso deve ser um número entre 0.01 e 10.", variant: "destructive"});
         return;
     }
-    if (!newProvaData || !newProvaData.trim()) {
+    if (!newProvaData || !newProvaData.trim()) { // Check if newProvaData (string) is empty
         toast({ title: "Data da prova obrigatória", description: "Por favor, insira a data da prova.", variant: "destructive"});
         return;
     }
 
-    const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
-    if (!dateRegex.test(newProvaData)) {
+    // Validate date format dd/mm/yyyy
+    const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+    const match = newProvaData.match(dateRegex);
+    if (!match) {
         toast({ title: "Formato de Data Inválido", description: "Por favor, use o formato dd/mm/aaaa.", variant: "destructive"});
         return;
     }
 
-    const parts = newProvaData.split('/');
-    const day = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1; // Mês é 0-indexado em JS Date
-    const year = parseInt(parts[2], 10);
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1; // Month is 0-indexed in JS Date
+    const year = parseInt(match[3], 10);
     const parsedDate = new Date(year, month, day);
 
+    // Check if the parsed date components match the input (e.g., no 30/02/2025)
     if (isNaN(parsedDate.getTime()) || parsedDate.getDate() !== day || parsedDate.getMonth() !== month || parsedDate.getFullYear() !== year) {
         toast({ title: "Data Inválida", description: "A data inserida não é válida (ex: 30/02/2025).", variant: "destructive"});
         return;
     }
     
-    // Optional: check if date is in the past
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Set to start of today for comparison
     if (parsedDate < today) {
         toast({ title: "Data Passada", description: "A data da prova não pode ser no passado.", variant: "destructive" });
         return;
     }
-
 
     setIsProcessingProva(true);
     try {
@@ -369,21 +371,24 @@ export default function ManagementPage() {
             disciplinaId: selectedDisciplinaIdForProva,
             nome: newProvaNome.trim(),
             peso: pesoNum,
-            data: Timestamp.fromDate(parsedDate),
+            data: Timestamp.fromDate(parsedDate), // Convert JS Date to Firebase Timestamp
             createdAt: serverTimestamp() as Timestamp,
         };
 
         await addDoc(collection(db, "provas"), provaDataToSave);
         toast({ title: "Prova Cadastrada!", description: `A prova "${newProvaNome.trim()}" foi salva com sucesso.`});
 
+        // Reset form and close dialog
         setIsCadastrarProvaDialogOpen(false);
         setNewProvaNome("");
         setNewProvaPeso("");
-        setNewProvaData(undefined);
+        setNewProvaData(undefined); // Reset string date state
         setSelectedDisciplinaIdForProva(undefined);
         if (isAdmin) {
-            setSelectedTurmaIdForProva(undefined); 
+            setSelectedTurmaIdForProva(undefined); // Also reset turma if admin
         } 
+        // Note: Consider if disciplinasForProvaDropdown should be refetched or cleared here.
+        // For now, it will refetch when selectedTurmaIdForProva changes.
 
     } catch (error: any) {
         console.error("Error adding prova:", error);
@@ -428,8 +433,10 @@ export default function ManagementPage() {
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Button variant="default" onClick={() => handleManagementAction("Lançar Notas da Turma")} className="w-full bg-primary hover:bg-primary/90">
-              <ClipboardSignature className="mr-2 h-5 w-5" /> Lançar Notas da Turma
+            <Button asChild variant="default" className="w-full bg-primary hover:bg-primary/90">
+              <Link href="/management/grades">
+                <UploadCloud className="mr-2 h-5 w-5" /> Lançar Notas da Turma
+              </Link>
             </Button>
             <Button variant="secondary" onClick={() => handleManagementAction("Imprimir Lista de Chamada")} className="w-full">
               <Printer className="mr-2 h-5 w-5" /> Imprimir Lista de Chamada
@@ -770,11 +777,12 @@ export default function ManagementPage() {
           <div className="mt-6 p-4 border border-dashed border-secondary/30 rounded-md bg-secondary/5">
             <h3 className="text-xl font-semibold text-secondary-foreground/80 mb-2">Avisos e Próximos Passos:</h3>
             <ul className="list-disc list-inside text-sm text-secondary-foreground/70 space-y-1">
-              <li>As funcionalidades de "Lançar Notas", "Imprimir Chamada", etc., são simulações.</li>
-              <li>A funcionalidade "Adicionar Aluno à Turma" agora interage com o Firestore.</li>
-              <li>A funcionalidade "Cadastrar Disciplina" agora salva os dados no Firestore em uma coleção 'disciplinas'.</li>
-              <li>A funcionalidade "Cadastrar Prova" agora salva os dados no Firestore em uma coleção 'provas'.</li>
-              <li>Certifique-se de que as regras de segurança do Firestore permitem as operações necessárias nas coleções 'users', 'turmas', 'disciplinas' e 'provas'.</li>
+              <li>As funcionalidades de "Imprimir Chamada", "Comunicados", etc., são simulações.</li>
+              <li>A funcionalidade "Adicionar Aluno à Turma" interage com o Firestore.</li>
+              <li>A funcionalidade "Cadastrar Disciplina" salva os dados no Firestore.</li>
+              <li>A funcionalidade "Cadastrar Prova" salva os dados no Firestore.</li>
+              <li>A nova página "Lançar Notas da Turma" (/management/grades) utiliza IA (Genkit) para processamento.</li>
+              <li>Certifique-se de que as regras de segurança do Firestore permitem as operações nas coleções 'users', 'turmas', 'disciplinas', 'provas' e 'studentGrades'.</li>
             </ul>
           </div>
         </CardContent>
