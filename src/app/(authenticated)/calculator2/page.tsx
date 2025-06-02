@@ -1,4 +1,6 @@
 
+"use client"; // Add this directive
+
 import { CalculatorWrapper } from "@/components/calculators/CalculatorWrapper";
 import { Calculator2Form } from "@/components/calculators/Calculator2Form";
 import { BookOpenCheck } from "lucide-react"; 
@@ -17,3 +19,4 @@ export default function Calculator2Page() {
     </CalculatorWrapper>
   );
 }
+
