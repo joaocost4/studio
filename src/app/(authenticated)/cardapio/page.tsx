@@ -36,7 +36,12 @@ function parseTd(tdHtml: string): { text: string; rowspan: number } {
 
 async function getCardapioData(): Promise<DailyMenu[] | null> {
   try {
-    const response = await fetch('https://guri.unipampa.edu.ru/run/publico/', { next: { revalidate: 3600 } }); // Revalidate every hour
+    const response = await fetch('https://guri.unipampa.edu.ru/run/publico/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      },
+      next: { revalidate: 3600 } // Revalidate every hour
+    });
     if (!response.ok) {
       console.error("Erro ao buscar cardápio: Status", response.status);
       return null;
@@ -185,7 +190,7 @@ export default async function CardapioPage() {
           <AlertTitle>Erro ao Carregar Cardápio</AlertTitle>
           <AlertDescription>
             Não foi possível carregar o cardápio de Uruguaiana do site da Unipampa. 
-            Isso pode ocorrer se o site estiver fora do ar ou se sua estrutura mudou. 
+            Isso pode ocorrer se o site estiver fora do ar, se sua estrutura mudou, ou por problemas de conectividade do servidor. 
             Por favor, tente novamente mais tarde.
           </AlertDescription>
         </Alert>
@@ -247,3 +252,4 @@ export default async function CardapioPage() {
     </div>
   );
 }
+
