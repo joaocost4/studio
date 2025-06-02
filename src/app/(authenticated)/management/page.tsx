@@ -41,11 +41,6 @@ import { db } from "@/lib/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Loader2 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { cn } from "@/lib/utils";
 
 
 interface TurmaData {
@@ -103,9 +98,8 @@ export default function ManagementPage() {
   const [selectedDisciplinaIdForProva, setSelectedDisciplinaIdForProva] = useState<string | undefined>(undefined);
   const [newProvaNome, setNewProvaNome] = useState("");
   const [newProvaPeso, setNewProvaPeso] = useState<string>(""); 
-  const [newProvaData, setNewProvaData] = useState<Date | undefined>(undefined);
+  const [newProvaData, setNewProvaData] = useState<string | undefined>(undefined); // Changed to string
   const [isProcessingProva, setIsProcessingProva] = useState(false);
-  const [isProvaDatePickerOpen, setIsProvaDatePickerOpen] = useState(false);
 
 
   const isAdmin = userProfile?.role === USER_ROLES.ADMIN;
@@ -183,7 +177,7 @@ export default function ManagementPage() {
     );
   }
   
-  const handleSimulatedAction = (action: string, details?: any) => {
+  const handleManagementAction = (action: string, details?: any) => {
     let description = `Ação de gestão "${action}" executada! (Simulação)`;
     if (details) {
       description += ` Detalhes: ${JSON.stringify(details)}`;
@@ -337,10 +331,36 @@ export default function ManagementPage() {
         toast({ title: "Peso inválido", description: "O peso deve ser um número entre 0.01 e 10.", variant: "destructive"});
         return;
     }
-    if (!newProvaData) {
-        toast({ title: "Data da prova obrigatória", description: "Por favor, selecione a data da prova.", variant: "destructive"});
+    if (!newProvaData || !newProvaData.trim()) {
+        toast({ title: "Data da prova obrigatória", description: "Por favor, insira a data da prova.", variant: "destructive"});
         return;
     }
+
+    const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+    if (!dateRegex.test(newProvaData)) {
+        toast({ title: "Formato de Data Inválido", description: "Por favor, use o formato dd/mm/aaaa.", variant: "destructive"});
+        return;
+    }
+
+    const parts = newProvaData.split('/');
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // Mês é 0-indexado em JS Date
+    const year = parseInt(parts[2], 10);
+    const parsedDate = new Date(year, month, day);
+
+    if (isNaN(parsedDate.getTime()) || parsedDate.getDate() !== day || parsedDate.getMonth() !== month || parsedDate.getFullYear() !== year) {
+        toast({ title: "Data Inválida", description: "A data inserida não é válida (ex: 30/02/2025).", variant: "destructive"});
+        return;
+    }
+    
+    // Optional: check if date is in the past
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to start of today for comparison
+    if (parsedDate < today) {
+        toast({ title: "Data Passada", description: "A data da prova não pode ser no passado.", variant: "destructive" });
+        return;
+    }
+
 
     setIsProcessingProva(true);
     try {
@@ -349,7 +369,7 @@ export default function ManagementPage() {
             disciplinaId: selectedDisciplinaIdForProva,
             nome: newProvaNome.trim(),
             peso: pesoNum,
-            data: Timestamp.fromDate(newProvaData),
+            data: Timestamp.fromDate(parsedDate),
             createdAt: serverTimestamp() as Timestamp,
         };
 
@@ -408,18 +428,96 @@ export default function ManagementPage() {
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Button variant="default" onClick={() => handleSimulatedAction("Lançar Notas da Turma")} className="w-full bg-primary hover:bg-primary/90">
+            <Button variant="default" onClick={() => handleManagementAction("Lançar Notas da Turma")} className="w-full bg-primary hover:bg-primary/90">
               <ClipboardSignature className="mr-2 h-5 w-5" /> Lançar Notas da Turma
             </Button>
-            <Button variant="secondary" onClick={() => handleSimulatedAction("Imprimir Lista de Chamada")} className="w-full">
+            <Button variant="secondary" onClick={() => handleManagementAction("Imprimir Lista de Chamada")} className="w-full">
               <Printer className="mr-2 h-5 w-5" /> Imprimir Lista de Chamada
             </Button>
-            <Button variant="outline" onClick={() => handleSimulatedAction("Gerenciar Comunicados da Turma")} className="w-full">
+            <Button variant="outline" onClick={() => handleManagementAction("Gerenciar Comunicados da Turma")} className="w-full">
               <Megaphone className="mr-2 h-5 w-5" /> Gerenciar Comunicados
             </Button>
-            <Button variant="default" onClick={() => handleSimulatedAction("Agendar Reuniões")} className="w-full bg-primary/80 hover:bg-primary/70">
-              <CalendarPlus className="mr-2 h-5 w-5" /> Agendar Reuniões
+             <Button variant="secondary" className="w-full" onClick={() => handleManagementAction("Visualizar Calendário Acadêmico")}>
+                <CalendarDays className="mr-2 h-5 w-5" /> Visualizar Calendário
             </Button>
+            
+            {canAddStudentToTurma && (
+              <Dialog open={isAddStudentToTurmaDialogOpen} onOpenChange={(isOpen) => {
+                setIsAddStudentToTurmaDialogOpen(isOpen);
+                if (!isOpen) {
+                  setStudentMatriculaToAdd("");
+                  if (isAdmin) setAdminSelectedTurmaId(undefined);
+                }
+              }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="w-full">
+                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à {isAdmin ? "Turma" : "Minha Turma"}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Adicionar Aluno à Turma</DialogTitle>
+                    <DialogDescription>
+                      {isAdmin 
+                        ? "Insira a matrícula do aluno e selecione a turma de destino."
+                        : `Insira a matrícula do aluno que deseja adicionar à sua turma: ${userProfile?.turmaNome}.`}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="student-matricula" className="text-right">
+                        Matrícula
+                      </Label>
+                      <Input
+                        id="student-matricula"
+                        value={studentMatriculaToAdd}
+                        onChange={(e) => setStudentMatriculaToAdd(e.target.value)}
+                        className="col-span-3"
+                        placeholder="Matrícula do Aluno"
+                      />
+                    </div>
+                    {isAdmin && (
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="admin-select-turma" className="text-right">
+                          Turma
+                        </Label>
+                        {loadingTurmas ? (
+                            <div className="col-span-3 flex items-center"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando turmas...</div>
+                        ) : (
+                            <Select value={adminSelectedTurmaId} onValueChange={setAdminSelectedTurmaId}>
+                                <SelectTrigger className="col-span-3">
+                                    <SelectValue placeholder="Selecione a turma de destino" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {activeTurmas.map(turma => (
+                                        <SelectItem key={turma.id} value={turma.id}>{turma.nome}</SelectItem>
+                                    ))}
+                                    {activeTurmas.length === 0 && <p className="p-2 text-sm text-muted-foreground">Nenhuma turma ativa encontrada.</p>}
+                                </SelectContent>
+                            </Select>
+                        )}
+                      </div>
+                    )}
+                    {!isAdmin && isRepresentative && userProfile?.turmaNome && (
+                        <p className="text-sm text-muted-foreground col-span-4 text-center">
+                            Atribuindo à sua turma: <span className="font-semibold text-foreground">{userProfile.turmaNome}</span>.
+                        </p>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsAddStudentToTurmaDialogOpen(false)} disabled={isProcessingAssignment}>Cancelar</Button>
+                    <Button 
+                      type="button" 
+                      onClick={handleAssignStudentToTurma}
+                      disabled={!studentMatriculaToAdd.trim() || (isAdmin && !adminSelectedTurmaId && activeTurmas.length > 0) || isProcessingAssignment || (isAdmin && loadingTurmas)}
+                    >
+                      {isProcessingAssignment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {isProcessingAssignment ? "Atribuindo..." : "Atribuir Aluno"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
             
             <Dialog open={isCadastrarDisciplinaDialogOpen} onOpenChange={(isOpen) => {
                 setIsCadastrarDisciplinaDialogOpen(isOpen);
@@ -430,7 +528,7 @@ export default function ManagementPage() {
                 }
             }}>
                 <DialogTrigger asChild>
-                    <Button variant="secondary" className="w-full">
+                     <Button variant="secondary" className="w-full">
                         <ListPlus className="mr-2 h-5 w-5" /> Cadastrar Disciplina
                     </Button>
                 </DialogTrigger>
@@ -511,90 +609,8 @@ export default function ManagementPage() {
                 </DialogContent>
             </Dialog>
 
-            <Button variant="outline" onClick={() => handleSimulatedAction("Painel de Desempenho da Turma")} className="w-full">
+            <Button variant="outline" onClick={() => handleManagementAction("Painel de Desempenho da Turma")} className="w-full">
               <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma
-            </Button>
-            
-            {canAddStudentToTurma && (
-              <Dialog open={isAddStudentToTurmaDialogOpen} onOpenChange={(isOpen) => {
-                setIsAddStudentToTurmaDialogOpen(isOpen);
-                if (!isOpen) {
-                  setStudentMatriculaToAdd("");
-                  if (isAdmin) setAdminSelectedTurmaId(undefined);
-                }
-              }}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full">
-                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Turma
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Adicionar Aluno à Turma</DialogTitle>
-                    <DialogDescription>
-                      {isAdmin 
-                        ? "Insira a matrícula do aluno e selecione a turma de destino."
-                        : `Insira a matrícula do aluno que deseja adicionar à sua turma: ${userProfile?.turmaNome}.`}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="student-matricula" className="text-right">
-                        Matrícula
-                      </Label>
-                      <Input
-                        id="student-matricula"
-                        value={studentMatriculaToAdd}
-                        onChange={(e) => setStudentMatriculaToAdd(e.target.value)}
-                        className="col-span-3"
-                        placeholder="Matrícula do Aluno"
-                      />
-                    </div>
-                    {isAdmin && (
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="admin-select-turma" className="text-right">
-                          Turma
-                        </Label>
-                        {loadingTurmas ? (
-                            <div className="col-span-3 flex items-center"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando turmas...</div>
-                        ) : (
-                            <Select value={adminSelectedTurmaId} onValueChange={setAdminSelectedTurmaId}>
-                                <SelectTrigger className="col-span-3">
-                                    <SelectValue placeholder="Selecione a turma de destino" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {activeTurmas.map(turma => (
-                                        <SelectItem key={turma.id} value={turma.id}>{turma.nome}</SelectItem>
-                                    ))}
-                                    {activeTurmas.length === 0 && <p className="p-2 text-sm text-muted-foreground">Nenhuma turma ativa encontrada.</p>}
-                                </SelectContent>
-                            </Select>
-                        )}
-                      </div>
-                    )}
-                    {!isAdmin && isRepresentative && userProfile?.turmaNome && (
-                        <p className="text-sm text-muted-foreground col-span-4 text-center">
-                            Atribuindo à sua turma: <span className="font-semibold text-foreground">{userProfile.turmaNome}</span>.
-                        </p>
-                    )}
-                  </div>
-                  <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setIsAddStudentToTurmaDialogOpen(false)} disabled={isProcessingAssignment}>Cancelar</Button>
-                    <Button 
-                      type="button" 
-                      onClick={handleAssignStudentToTurma}
-                      disabled={!studentMatriculaToAdd.trim() || (isAdmin && !adminSelectedTurmaId && activeTurmas.length > 0) || isProcessingAssignment || (isAdmin && loadingTurmas)}
-                    >
-                      {isProcessingAssignment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      {isProcessingAssignment ? "Atribuindo..." : "Atribuir Aluno"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-            
-            <Button variant="default" onClick={() => handleSimulatedAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
-              <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
             </Button>
 
             <Dialog open={isCadastrarProvaDialogOpen} onOpenChange={(isOpen) => {
@@ -700,33 +716,14 @@ export default function ManagementPage() {
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="prova-data" className="text-right">Data da Prova</Label>
-                            <Popover open={isProvaDatePickerOpen} onOpenChange={setIsProvaDatePickerOpen}>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant={"outline"}
-                                        className={cn(
-                                        "col-span-3 justify-start text-left font-normal",
-                                        !newProvaData && "text-muted-foreground"
-                                        )}
-                                    >
-                                        <CalendarDays className="mr-2 h-4 w-4" />
-                                        {newProvaData ? format(newProvaData, "dd/MM/yyyy", { locale: ptBR }) : <span>Escolha uma data</span>}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                    <Calendar
-                                        mode="single"
-                                        selected={newProvaData}
-                                        onSelect={(date) => {
-                                            setNewProvaData(date);
-                                            setIsProvaDatePickerOpen(false); 
-                                        }}
-                                        initialFocus
-                                        locale={ptBR}
-                                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} 
-                                    />
-                                </PopoverContent>
-                            </Popover>
+                            <Input
+                                id="prova-data"
+                                type="text"
+                                value={newProvaData || ""}
+                                onChange={(e) => setNewProvaData(e.target.value)}
+                                placeholder="dd/mm/aaaa"
+                                className="col-span-3"
+                            />
                         </div>
                     </div>
                     <DialogFooter>
@@ -740,7 +737,7 @@ export default function ManagementPage() {
                                 !selectedDisciplinaIdForProva || 
                                 !newProvaNome.trim() || 
                                 !newProvaPeso.trim() || 
-                                !newProvaData ||
+                                !newProvaData || !newProvaData.trim() ||
                                 (isAdmin && loadingTurmas) || loadingDisciplinasForProva
                             }
                         >
@@ -751,6 +748,9 @@ export default function ManagementPage() {
                 </DialogContent>
             </Dialog>
 
+            <Button variant="default" onClick={() => handleManagementAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
+              <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
+            </Button>
           </div>
 
            {isAdmin && (
@@ -760,7 +760,9 @@ export default function ManagementPage() {
                 <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => router.push('/admin/turmas')}>
                   <Users className="mr-2 h-5 w-5" /> Gerir Turmas
                 </Button>
-                 {/* O botão "Teste" foi substituído pela funcionalidade "Cadastrar Prova" */}
+                 <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => handleManagementAction("Teste")}>
+                    <FlaskConical className="mr-2 h-5 w-5" /> Teste
+                </Button>
               </div>
             </div>
           )}
@@ -782,12 +784,4 @@ export default function ManagementPage() {
 }
     
 
-    
-
-    
-
-    
-
-    
-
-    
+      
