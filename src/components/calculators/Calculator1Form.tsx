@@ -167,10 +167,7 @@ export function Calculator1Form() {
           matricula: userProfile.matricula,
           updatedAt: serverTimestamp() 
         }, { merge: true });
-        toast({
-          title: "Notas Salvas!",
-          description: "Suas notas foram salvas com sucesso.",
-        });
+        // Toast de notas salvas foi removido daqui
       } catch (error) {
         console.error("Error saving data: ", error);
         toast({
@@ -255,7 +252,7 @@ export function Calculator1Form() {
         <div className="flex flex-col sm:flex-row gap-4 mt-8">
             <Button type="submit" className="w-full sm:w-auto flex-grow bg-accent hover:bg-accent/90 text-accent-foreground text-lg py-6" disabled={calculating}>
             {calculating ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <PlayCircle className="mr-2 h-5 w-5" />}
-            {calculating ? "Calculando..." : "Calcular Nota Final e Salvar"}
+            {calculating ? "Calculando..." : "Calcular Nota Final"}
             </Button>
             <Button type="button" variant="outline" onClick={handleClearAll} className="w-full sm:w-auto text-lg py-6 border-destructive text-destructive hover:bg-destructive/10">
                 <Eraser className="mr-2 h-5 w-5" /> Limpar Tudo
@@ -282,7 +279,7 @@ export function Calculator1Form() {
             )}
           </CardContent>
            <CardFooter className="justify-center pt-4">
-            <p className="text-sm text-muted-foreground">Suas notas foram salvas para a próxima vez.</p>
+            {/* Texto de "notas salvas" foi removido daqui */}
           </CardFooter>
         </Card>
       )}
@@ -290,3 +287,5 @@ export function Calculator1Form() {
   );
 }
 
+
+    

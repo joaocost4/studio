@@ -158,12 +158,13 @@ export function AppSidebar() {
   return (
     <Sidebar side="left" variant="sidebar" collapsible="icon">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard" className="flex items-center gap-2 text-sidebar-foreground hover:text-sidebar-primary transition-colors">
+        <Link href="/dashboard" className="flex flex-col items-start gap-1 text-sidebar-foreground hover:text-sidebar-primary transition-colors">
+          <div className="flex items-center gap-2">
             <StrawberryIcon className="h-8 w-8 text-primary" />
-            <h1 className="text-xl font-headline font-semibold group-data-[collapsible=icon]:hidden">Calculadora da Moranguinho</h1>
-          </Link>
-        </div>
+            <h1 className="text-xl font-headline font-semibold group-data-[collapsible=icon]:hidden">Moranguinho</h1>
+          </div>
+          <span className="text-xs text-sidebar-foreground/70 ml-10 group-data-[collapsible=icon]:hidden">beta V 0.5</span>
+        </Link>
       </SidebarHeader>
 
       <SidebarContent className="flex-1 p-2">
@@ -202,3 +203,6 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+
+
+    
