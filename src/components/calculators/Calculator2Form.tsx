@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,14 +13,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import React, { useEffect, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, XCircle, Eraser } from "lucide-react"; // Added XCircle
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../ui/card";
 
-// Define a Zod schema for your calculator form
 const calculator2Schema = z.object({
-  ingredient: z.string().min(1, "Ingrediente é obrigatório"),
-  quantity: z.coerce.number().positive("Quantidade deve ser positiva"),
-  unit: z.enum(["gramas", "ml", "unidades"], { required_error: "Unidade é obrigatória" }),
+  ingredient: z.string().min(1, "Ingrediente é obrigatório").optional().or(z.literal("").transform(() => undefined)),
+  quantity: z.coerce.number().positive("Quantidade deve ser positiva").optional().or(z.literal("").transform(() => undefined)),
+  unit: z.enum(["gramas", "ml", "unidades"], { required_error: "Unidade é obrigatória" }).optional(),
 });
 
 type Calculator2FormValues = z.infer<typeof calculator2Schema>;
@@ -27,31 +27,34 @@ type Calculator2FormValues = z.infer<typeof calculator2Schema>;
 export function Calculator2Form() {
   const { toast } = useToast();
   const { userProfile } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [loadingData, setLoadingData] = useState(true);
+  const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
   const form = useForm<Calculator2FormValues>({
     resolver: zodResolver(calculator2Schema),
     defaultValues: {
-      ingredient: "",
-      quantity: 1,
-      unit: undefined, // Default to undefined so placeholder shows
+      ingredient: undefined,
+      quantity: undefined, 
+      unit: undefined,
     },
   });
 
-  // Load last session data
   useEffect(() => {
     if (userProfile) {
       const loadData = async () => {
-        setLoading(true);
+        setLoadingData(true);
         try {
           const docRef = doc(db, "calculator2Data", userProfile.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             const data = docSnap.data()?.lastSession;
             if (data) {
-              form.reset(data);
+              const sanitizedData: Partial<Calculator2FormValues> = {};
+              if (typeof data.ingredient === 'string') sanitizedData.ingredient = data.ingredient;
+              if (typeof data.quantity === 'number') sanitizedData.quantity = data.quantity;
+              if (["gramas", "ml", "unidades"].includes(data.unit)) sanitizedData.unit = data.unit;
+              form.reset(sanitizedData);
               toast({ title: "Sessão anterior da Calculadora Docinha carregada!" });
             }
           }
@@ -59,24 +62,64 @@ export function Calculator2Form() {
           console.error("Error loading data for calc 2: ", error);
           toast({ title: "Erro ao carregar dados da Calc. Docinha", variant: "destructive" });
         } finally {
-          setLoading(false);
+          setLoadingData(false);
         }
       };
       loadData();
+    } else {
+      setLoadingData(false);
     }
   }, [userProfile, form, toast]);
 
+  const handleClearField = (fieldName: keyof Calculator2FormValues) => {
+    if (fieldName === "quantity") {
+        form.setValue(fieldName, undefined);
+    } else if (fieldName === "unit") {
+        form.setValue(fieldName, undefined);
+    }
+    else {
+        form.setValue(fieldName, "");
+    }
+  };
+
+  const handleClearAll = () => {
+    form.reset({
+        ingredient: undefined,
+        quantity: undefined,
+        unit: undefined,
+    });
+    setResult(null);
+    toast({ title: "Campos Limpos", description: "Todos os dados da receita foram apagados." });
+  };
+
   async function onSubmit(values: Calculator2FormValues) {
-    setSaving(true);
-    // Placeholder calculation logic for Calculator 2
+    setCalculating(true);
+    setResult(null);
+
+    if (!values.ingredient || values.quantity === undefined || !values.unit) {
+        toast({
+            title: "Campos Incompletos",
+            description: "Por favor, preencha todos os campos da receita.",
+            variant: "destructive",
+        });
+        setCalculating(false);
+        return;
+    }
+    
     const calculatedResult = `Ingrediente: ${values.ingredient}, Quantidade: ${values.quantity} ${values.unit}.`;
     setResult(calculatedResult);
+
+    toast({
+        title: "Receita Calculada!",
+        description: "Sua combinação mágica está pronta!",
+    });
 
     if (userProfile) {
       try {
         const docRef = doc(db, "calculator2Data", userProfile.uid);
         await setDoc(docRef, { 
             lastSession: values,
+            matricula: userProfile.matricula,
             updatedAt: serverTimestamp()
         }, { merge: true });
         toast({
@@ -87,16 +130,16 @@ export function Calculator2Form() {
         console.error("Error saving data for calc 2: ", error);
         toast({
           title: "Erro ao Salvar (Calc. Docinha)",
-          description: "Não foi possível salvar seus dados.",
+          description: "Não foi possível salvar seus dados. Verifique as regras de segurança do Firestore.",
           variant: "destructive",
         });
       }
     }
-    setSaving(false);
+    setCalculating(false);
   }
   
-  if (loading) {
-    return <div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /> <span className="ml-2">Carregando delícias...</span></div>;
+  if (loadingData) {
+    return <div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /> <span className="ml-2 text-foreground">Carregando delícias...</span></div>;
   }
 
   return (
@@ -108,9 +151,21 @@ export function Calculator2Form() {
           render={({ field }) => (
             <FormItem>
               <FormLabel className="text-primary/90 font-semibold">Ingrediente Mágico</FormLabel>
-              <FormControl>
-                <Input placeholder="Ex: Chocolate Belga" {...field} className="border-primary/30 focus:border-primary" />
-              </FormControl>
+               <div className="flex items-center gap-2">
+                <FormControl>
+                    <Input 
+                    placeholder="Ex: Chocolate Belga" 
+                    {...field} 
+                    value={field.value ?? ""}
+                    className="border-primary/30 focus:border-primary" 
+                    />
+                </FormControl>
+                {field.value && (
+                    <Button type="button" variant="ghost" size="icon" onClick={() => handleClearField("ingredient")} className="text-muted-foreground hover:text-destructive h-8 w-8">
+                        <XCircle size={18}/>
+                    </Button>
+                )}
+              </div>
               <FormMessage />
             </FormItem>
           )}
@@ -122,9 +177,23 @@ export function Calculator2Form() {
           render={({ field }) => (
             <FormItem>
               <FormLabel className="text-primary/90 font-semibold">Quantidade</FormLabel>
-              <FormControl>
-                <Input type="number" placeholder="Ex: 100" {...field} className="border-primary/30 focus:border-primary" />
-              </FormControl>
+              <div className="flex items-center gap-2">
+                <FormControl>
+                    <Input 
+                    type="number" 
+                    placeholder="Ex: 100" 
+                    {...field}
+                    value={field.value ?? ""}
+                    onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                    className="border-primary/30 focus:border-primary" 
+                    />
+                </FormControl>
+                {field.value !== undefined && (
+                     <Button type="button" variant="ghost" size="icon" onClick={() => handleClearField("quantity")} className="text-muted-foreground hover:text-destructive h-8 w-8">
+                        <XCircle size={18} />
+                    </Button>
+                )}
+              </div>
               <FormMessage />
             </FormItem>
           )}
@@ -135,39 +204,51 @@ export function Calculator2Form() {
           render={({ field }) => (
             <FormItem>
               <FormLabel className="text-primary/90 font-semibold">Unidade de Medida</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger className="border-primary/30 focus:border-primary">
-                    <SelectValue placeholder="Selecione a unidade" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="gramas">Gramas (g)</SelectItem>
-                  <SelectItem value="ml">Mililitros (ml)</SelectItem>
-                  <SelectItem value="unidades">Unidades</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl>
+                    <SelectTrigger className="border-primary/30 focus:border-primary">
+                        <SelectValue placeholder="Selecione a unidade" />
+                    </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                    <SelectItem value="gramas">Gramas (g)</SelectItem>
+                    <SelectItem value="ml">Mililitros (ml)</SelectItem>
+                    <SelectItem value="unidades">Unidades</SelectItem>
+                    </SelectContent>
+                </Select>
+                {field.value && (
+                     <Button type="button" variant="ghost" size="icon" onClick={() => handleClearField("unit")} className="text-muted-foreground hover:text-destructive h-8 w-8">
+                        <XCircle size={18} />
+                    </Button>
+                )}
+               </div>
               <FormMessage />
             </FormItem>
           )}
         />
         </div>
-        <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={saving}>
-          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-          {saving ? "Processando Magia..." : "Calcular Ingredientes"}
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-4 mt-8">
+            <Button type="submit" className="w-full sm:w-auto flex-grow bg-accent hover:bg-accent/90 text-accent-foreground" disabled={calculating}>
+            {calculating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            {calculating ? "Processando Magia..." : "Calcular Ingredientes"}
+            </Button>
+            <Button type="button" variant="outline" onClick={handleClearAll} className="w-full sm:w-auto border-destructive text-destructive hover:bg-destructive/10">
+                <Eraser className="mr-2 h-5 w-5" /> Limpar Tudo
+            </Button>
+        </div>
       </form>
 
       {result && (
-        <Card className="mt-8 bg-primary/5 border-primary/20 shadow-md">
+        <Card className="mt-8 bg-card border-primary/20 shadow-md">
           <CardHeader>
             <CardTitle className="text-primary font-headline">Receita Pronta!</CardTitle>
-            <CardDescription>Detalhes do seu ingrediente mágico:</CardDescription>
+            <CardDescription className="text-muted-foreground">Detalhes do seu ingrediente mágico:</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-lg text-foreground/90 p-4 bg-background rounded-md shadow-inner">{result}</p>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="pt-4">
             <p className="text-sm text-muted-foreground">Os dados foram salvos automaticamente.</p>
           </CardFooter>
         </Card>
@@ -175,3 +256,4 @@ export function Calculator2Form() {
     </Form>
   );
 }
+
