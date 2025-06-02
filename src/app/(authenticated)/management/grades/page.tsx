@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useAuth } from "@/hooks/useAuth";
 import { USER_ROLES } from "@/lib/constants";
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { collection, query, where, getDocs, doc, serverTimestamp, writeBatch, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Loader2, UploadCloud, AlertTriangle, CheckCircle, Info, ShieldAlert, Save } from "lucide-react";
+import { Loader2, UploadCloud, AlertTriangle, CheckCircle, Info, ShieldAlert, Save, FileUp } from "lucide-react";
 import { ProcessGradesInput, processPastedGrades, ProcessGradesOutput, ProcessedGradeItem } from "@/ai/flows/process-grades-flow";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -43,6 +43,7 @@ export default function LancarNotasPage() {
   const { userProfile } = useAuth();
   useRequireAuth({ allowedRoles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] });
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = userProfile?.role === USER_ROLES.ADMIN;
 
@@ -136,6 +137,30 @@ export default function LancarNotasPage() {
     if (selectedDisciplinaId && selectedTurmaId) fetchProvas(selectedDisciplinaId);
   }, [selectedDisciplinaId, selectedTurmaId, toast]);
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result;
+        if (typeof text === 'string') {
+          setGradesPasted(text);
+          toast({ title: "Conteúdo do Arquivo Carregado", description: "O texto do arquivo foi colado na área abaixo." });
+        } else {
+          toast({ title: "Erro ao Ler Arquivo", description: "Não foi possível ler o conteúdo do arquivo como texto.", variant: "destructive" });
+        }
+      };
+      reader.onerror = () => {
+        toast({ title: "Erro ao Ler Arquivo", description: "Ocorreu um erro ao tentar ler o arquivo.", variant: "destructive" });
+      };
+      reader.readAsText(file);
+    }
+    // Reset file input value to allow selecting the same file again
+    if (event.target) {
+      event.target.value = "";
+    }
+  };
+
   const handleProcessGrades = async () => {
     if (!selectedTurmaId || !selectedDisciplinaId || !selectedProvaId || !gradesPasted.trim()) {
       toast({ title: "Campos Obrigatórios", description: "Selecione turma, disciplina, prova e cole as notas.", variant: "destructive"});
@@ -184,7 +209,6 @@ export default function LancarNotasPage() {
 
         processingResult.processedEntries.forEach(entry => {
             if (entry.status === 'valid' && entry.studentUid && typeof entry.gradeNumeric === 'number') {
-                // Document ID can be studentUid_provaId to ensure uniqueness if desired, or use addDoc for multiple submissions
                 const gradeDocRef = doc(db, "studentGrades", `${entry.studentUid}_${selectedProvaId}`);
                 batch.set(gradeDocRef, {
                     studentUid: entry.studentUid,
@@ -194,8 +218,8 @@ export default function LancarNotasPage() {
                     grade: entry.gradeNumeric,
                     submittedAt: serverTimestamp(),
                     submittedByUid: userProfile.uid,
-                    studentMatricula: entry.matricula, // Store for easier querying/display if needed
-                    studentNameSnapshot: entry.studentName, // Snapshot of name at time of grading
+                    studentMatricula: entry.matricula, 
+                    studentNameSnapshot: entry.studentName, 
                 });
                 savedCount++;
             }
@@ -204,8 +228,8 @@ export default function LancarNotasPage() {
         if (savedCount > 0) {
             await batch.commit();
             toast({ title: "Notas Salvas!", description: `${savedCount} notas foram salvas com sucesso no Firestore.` });
-            setProcessingResult(null); // Clear results after saving
-            setGradesPasted(""); // Clear textarea
+            setProcessingResult(null); 
+            setGradesPasted(""); 
         } else {
             toast({ title: "Nenhuma Nota para Salvar", description: "Nenhuma das notas processadas estava em um estado válido para ser salva.", variant: "default" });
         }
@@ -233,7 +257,7 @@ export default function LancarNotasPage() {
             <UploadCloud className="mr-3 h-8 w-8" /> Lançar Notas da Turma
           </CardTitle>
           <CardDescription>
-            Selecione a turma, disciplina e prova. Cole as notas (matrícula e nota por linha) e use a IA para processar.
+            Selecione a turma, disciplina e prova. Cole as notas (matrícula e nota por linha) ou carregue de um arquivo, depois use a IA para processar.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -284,7 +308,7 @@ export default function LancarNotasPage() {
 
           {/* Textarea e Botão de Processar */}
           <div>
-            <Label htmlFor="grades-paste">Cole as Notas Aqui (Matrícula: Nota ou Matrícula Nota)</Label>
+            <Label htmlFor="grades-paste">Cole as Notas Aqui (Matrícula: Nota ou Matrícula Nota) ou Extraia de um Arquivo</Label>
             <Textarea
               id="grades-paste"
               value={gradesPasted}
@@ -295,10 +319,31 @@ export default function LancarNotasPage() {
               disabled={!selectedProvaId}
             />
           </div>
-          <Button onClick={handleProcessGrades} disabled={isProcessingAI || !selectedProvaId || !gradesPasted.trim()} className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground">
-            {isProcessingAI ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <UploadCloud className="mr-2 h-5 w-5" />}
-            {isProcessingAI ? "Processando com IA..." : "Processar Notas com IA"}
-          </Button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            style={{ display: 'none' }} 
+            accept=".txt,.csv,.text" 
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button 
+                onClick={() => fileInputRef.current?.click()} 
+                disabled={!selectedProvaId} 
+                variant="outline"
+                className="w-full sm:w-auto"
+            >
+                <FileUp className="mr-2 h-5 w-5" /> Extrair de Arquivo
+            </Button>
+            <Button 
+                onClick={handleProcessGrades} 
+                disabled={isProcessingAI || !selectedProvaId || !gradesPasted.trim()} 
+                className="w-full sm:w-auto flex-grow bg-accent hover:bg-accent/90 text-accent-foreground"
+            >
+                {isProcessingAI ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <UploadCloud className="mr-2 h-5 w-5" />}
+                {isProcessingAI ? "Processando com IA..." : "Processar Notas com IA"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
