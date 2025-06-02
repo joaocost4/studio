@@ -13,10 +13,10 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { collection, query, where, getDocs, doc, serverTimestamp, writeBatch, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Loader2, UploadCloud, AlertTriangle, CheckCircle, Info, ShieldAlert, Save, FileUp } from "lucide-react";
+import { Loader2, UploadCloud, AlertTriangle, CheckCircle, Info, ShieldAlert, Save, FileUp, FileText, Image as ImageIcon, X } from "lucide-react";
 import { ProcessGradesInput, processPastedGrades, ProcessGradesOutput, ProcessedGradeItem } from "@/ai/flows/process-grades-flow";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox"; // Import Checkbox
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TurmaData {
   id: string;
@@ -40,6 +40,12 @@ interface ProvaData {
   data: Timestamp;
 }
 
+interface SelectedFileForAI {
+  name: string;
+  type: string; // MIME type
+  dataUri: string;
+}
+
 export default function LancarNotasPage() {
   const { userProfile } = useAuth();
   useRequireAuth({ allowedRoles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] });
@@ -59,11 +65,12 @@ export default function LancarNotasPage() {
   const [selectedProvaId, setSelectedProvaId] = useState<string | undefined>();
   
   const [gradesPasted, setGradesPasted] = useState<string>("");
+  const [selectedFileForAI, setSelectedFileForAI] = useState<SelectedFileForAI | null>(null);
+
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [isSavingGrades, setIsSavingGrades] = useState(false);
   const [processingResult, setProcessingResult] = useState<ProcessGradesOutput | null>(null);
   const [forceSaveOverride, setForceSaveOverride] = useState<Record<number, boolean>>({});
-
 
   const [loadingTurmas, setLoadingTurmas] = useState(false);
   const [loadingDisciplinas, setLoadingDisciplinas] = useState(false);
@@ -157,43 +164,91 @@ export default function LancarNotasPage() {
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const text = e.target?.result;
-        if (typeof text === 'string') {
-          setGradesPasted(text);
-          toast({ title: "Conteúdo do Arquivo Carregado", description: "O texto do arquivo foi colado na área abaixo." });
+        const result = e.target?.result;
+        if (typeof result === 'string') {
+          if (file.type.startsWith('text/')) {
+            setGradesPasted(result);
+            setSelectedFileForAI(null); // Clear any selected image/pdf
+            toast({ title: "Conteúdo do Arquivo de Texto Carregado", description: "O texto do arquivo foi colado na área abaixo." });
+          } else if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+            setSelectedFileForAI({ name: file.name, type: file.type, dataUri: result });
+            setGradesPasted(""); // Clear any pasted text
+            toast({ title: `Arquivo ${file.type.startsWith('image/') ? 'de Imagem' : 'PDF'} Carregado`, description: `Arquivo "${file.name}" pronto para processamento pela IA.` });
+          } else {
+            toast({ title: "Tipo de Arquivo Não Suportado", description: "Por favor, selecione um arquivo de texto, imagem ou PDF.", variant: "destructive" });
+          }
         } else {
-          toast({ title: "Erro ao Ler Arquivo", description: "Não foi possível ler o conteúdo do arquivo como texto.", variant: "destructive" });
+          toast({ title: "Erro ao Ler Arquivo", description: "Não foi possível ler o conteúdo do arquivo.", variant: "destructive" });
         }
       };
       reader.onerror = () => {
         toast({ title: "Erro ao Ler Arquivo", description: "Ocorreu um erro ao tentar ler o arquivo.", variant: "destructive" });
       };
-      reader.readAsText(file);
+      
+      if (file.type.startsWith('text/') || file.type.startsWith('image/') || file.type === 'application/pdf') {
+        reader.readAsDataURL(file); // Read as data URL for all relevant types to get base64
+                                  // For text, we'll extract the text part from data URI if needed, but readAsText is simpler
+                                  // Let's adjust: use readAsText for text, readAsDataURL for image/pdf
+        if (file.type.startsWith('text/')) {
+          reader.readAsText(file);
+        } else {
+          reader.readAsDataURL(file);
+        }
+      } else {
+        toast({ title: "Tipo de Arquivo Não Suportado", description: "Por favor, selecione um arquivo de texto, imagem ou PDF.", variant: "destructive" });
+      }
     }
     if (event.target) {
-      event.target.value = "";
+      event.target.value = ""; // Reset file input
     }
   };
 
   const handleProcessGrades = async () => {
-    if (!selectedTurmaId || !selectedDisciplinaId || !selectedProvaId || !gradesPasted.trim()) {
-      toast({ title: "Campos Obrigatórios", description: "Selecione turma, disciplina, prova e cole as notas.", variant: "destructive"});
+    if (!selectedTurmaId || !selectedDisciplinaId || !selectedProvaId) {
+      toast({ title: "Seleção Incompleta", description: "Selecione turma, disciplina e prova.", variant: "destructive"});
       return;
     }
+    if (!gradesPasted.trim() && !selectedFileForAI) {
+      toast({ title: "Nenhuma Nota para Processar", description: "Cole as notas ou carregue um arquivo de imagem/PDF.", variant: "destructive"});
+      return;
+    }
+
     setIsProcessingAI(true);
     setProcessingResult(null);
     setForceSaveOverride({});
+
+    let inputSource: ProcessGradesInput['source'];
+
+    if (selectedFileForAI) {
+      inputSource = {
+        type: "file",
+        fileName: selectedFileForAI.name,
+        mimeType: selectedFileForAI.type,
+        dataUri: selectedFileForAI.dataUri,
+      };
+    } else if (gradesPasted.trim()) {
+      inputSource = {
+        type: "text",
+        content: gradesPasted,
+      };
+    } else {
+      // This case should be caught by the check above, but as a safeguard:
+      toast({ title: "Erro Interno", description: "Nenhuma fonte de dados para processar.", variant: "destructive" });
+      setIsProcessingAI(false);
+      return;
+    }
+
     try {
       const input: ProcessGradesInput = {
         turmaId: selectedTurmaId,
         disciplinaId: selectedDisciplinaId,
         provaId: selectedProvaId,
-        gradesPasted: gradesPasted,
+        source: inputSource,
       };
       const result = await processPastedGrades(input);
       setProcessingResult(result);
-      if (result.summary.successfullyParsed === 0 && result.summary.totalLines > 0) {
-         toast({ title: "Processamento IA", description: "Nenhuma nota pôde ser extraída do texto. Verifique o formato.", variant: "destructive" });
+      if (result.summary.successfullyParsed === 0 && result.summary.totalSourceEntries > 0) {
+         toast({ title: "Processamento IA", description: "Nenhuma nota pôde ser extraída. Verifique o conteúdo.", variant: "destructive" });
       } else if (result.summary.validEntries === 0 && result.summary.successfullyParsed > 0 && !result.processedEntries.some(e => e.status === 'invalid_matricula')) {
          toast({ title: "Processamento IA Concluído", description: "Nenhuma das notas processadas é válida (matrícula ou nota incorreta).", variant: "destructive" });
       } else if (result.summary.successfullyParsed > 0){
@@ -206,6 +261,21 @@ export default function LancarNotasPage() {
       setIsProcessingAI(false);
     }
   };
+  
+  const handleClearSelectedFile = () => {
+    setSelectedFileForAI(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""; // Attempt to clear the actual file input
+    }
+  };
+
+  const handleGradesPastedChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setGradesPasted(e.target.value);
+    if (selectedFileForAI) {
+      setSelectedFileForAI(null); // Clear selected file if user types in textarea
+    }
+  };
+
 
   const handleToggleForceSave = (entryIndex: number, shouldForceSave: boolean) => {
     setForceSaveOverride(prev => ({ ...prev, [entryIndex]: shouldForceSave }));
@@ -231,57 +301,6 @@ export default function LancarNotasPage() {
         const batch = writeBatch(db);
         let savedCount = 0;
 
-        entriesToSave.forEach((entry, originalIndex) => { // originalIndex might not be needed if entriesToSave is filtered
-            // We need to map back to original index if forceSaveOverride keys are based on original processingResult.processedEntries
-            // However, if entriesToSave only contains the items to be saved, we can use its own index for logging
-            // But for `forceSaveOverride` we need the original index if that's how it was keyed.
-            // The current implementation of `entriesToSave` means the original index is lost.
-            // Let's iterate original and check conditions:
-
-            processingResult.processedEntries.forEach((originalEntry, index) => {
-                const isOverriddenInvalidMatricula = originalEntry.status === 'invalid_matricula' && forceSaveOverride[index];
-                const isValidEntry = originalEntry.status === 'valid';
-
-                if ((isValidEntry || isOverriddenInvalidMatricula) && typeof originalEntry.gradeNumeric === 'number') {
-                    let gradeDocRef;
-                    const gradeData: any = {
-                        turmaId: selectedTurmaId,
-                        disciplinaId: selectedDisciplinaId,
-                        provaId: selectedProvaId,
-                        grade: originalEntry.gradeNumeric,
-                        submittedAt: serverTimestamp(),
-                        submittedByUid: userProfile.uid,
-                        studentMatricula: originalEntry.matricula,
-                    };
-
-                    if (isValidEntry && originalEntry.studentUid) {
-                        gradeDocRef = doc(db, "studentGrades", `${originalEntry.studentUid}_${selectedProvaId}`);
-                        gradeData.studentUid = originalEntry.studentUid;
-                        gradeData.studentNameSnapshot = originalEntry.studentName;
-                        gradeData.isUnverifiedMatricula = false;
-                    } else if (isOverriddenInvalidMatricula) {
-                        gradeDocRef = doc(collection(db, "studentGrades")); // Auto-ID
-                        gradeData.studentUid = null; 
-                        gradeData.studentNameSnapshot = null;
-                        gradeData.isUnverifiedMatricula = true;
-                    } else {
-                        return; 
-                    }
-                    
-                    // Check if we are about to add this entry (it might be processed multiple times by outer loop)
-                    // This part of the logic needs to ensure batch.set is called once per intended save.
-                    // The `entriesToSave` filter handles this, so the inner loop might be redundant or needs care.
-                    // Let's simplify: Iterate `processingResult.processedEntries` directly.
-
-                    // This logic is executed inside the forEach for entriesToSave
-                    // The above loop is the correct one. This is re-evaluation.
-
-                }
-            }); // End of re-evaluation forEach. The actual logic should be simpler.
-
-        }); // End of entriesToSave.forEach
-
-        // Corrected loop for saving:
         processingResult.processedEntries.forEach((entry, index) => {
             const isOverriddenInvalidMatricula = entry.status === 'invalid_matricula' && forceSaveOverride[index];
             const isValidEntry = entry.status === 'valid';
@@ -309,7 +328,6 @@ export default function LancarNotasPage() {
                     gradeData.studentNameSnapshot = null;
                     gradeData.isUnverifiedMatricula = true;
                 } else {
-                    // This case should not be reached due to the outer if condition
                     return; 
                 }
                 batch.set(gradeDocRef, gradeData);
@@ -317,15 +335,14 @@ export default function LancarNotasPage() {
             }
         });
 
-
         if (savedCount > 0) {
             await batch.commit();
             toast({ title: "Notas Salvas!", description: `${savedCount} notas foram salvas com sucesso no Firestore.` });
             setProcessingResult(null); 
             setGradesPasted(""); 
+            setSelectedFileForAI(null);
             setForceSaveOverride({});
         } else {
-             // This case should be caught by the initial entriesToSave.length === 0 check
             toast({ title: "Nenhuma Nota para Salvar", description: "Nenhuma das notas processadas estava em um estado válido para ser salva.", variant: "default" });
         }
 
@@ -344,6 +361,8 @@ export default function LancarNotasPage() {
 
   if (!userProfile) return <div className="flex justify-center items-center min-h-[200px]"><Loader2 className="h-8 w-8 animate-spin"/></div>;
 
+  const canProcess = !!selectedProvaId && (gradesPasted.trim().length > 0 || !!selectedFileForAI);
+
   return (
     <div className="container mx-auto py-8 px-4 space-y-6">
       <Card className="shadow-lg">
@@ -352,7 +371,7 @@ export default function LancarNotasPage() {
             <UploadCloud className="mr-3 h-8 w-8" /> Lançar Notas da Turma
           </CardTitle>
           <CardDescription>
-            Selecione a turma, disciplina e prova. Cole as notas (matrícula e nota por linha) ou carregue de um arquivo, depois use a IA para processar.
+            Selecione turma, disciplina e prova. Cole as notas (matrícula e nota por linha), ou carregue de um arquivo de texto, imagem ou PDF, depois use a IA para processar.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -399,17 +418,35 @@ export default function LancarNotasPage() {
               </Select>
             </div>
           </div>
-
+          
           <div>
-            <Label htmlFor="grades-paste">Cole as Notas Aqui (Matrícula: Nota ou Matrícula Nota) ou Extraia de um Arquivo</Label>
+            <Label htmlFor="grades-paste">
+              {selectedFileForAI 
+                ? `Arquivo selecionado para IA: ${selectedFileForAI.name}` 
+                : "Cole as Notas Aqui ou Extraia de um Arquivo"}
+            </Label>
+            {selectedFileForAI && (
+              <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50 my-1">
+                {selectedFileForAI.type.startsWith("image/") && <ImageIcon className="h-5 w-5 text-muted-foreground" />}
+                {selectedFileForAI.type === "application/pdf" && <FileText className="h-5 w-5 text-muted-foreground" />}
+                <span className="text-sm text-muted-foreground flex-grow truncate">{selectedFileForAI.name}</span>
+                <Button variant="ghost" size="icon" onClick={handleClearSelectedFile} className="h-7 w-7">
+                  <X className="h-4 w-4 text-destructive"/>
+                </Button>
+              </div>
+            )}
             <Textarea
               id="grades-paste"
               value={gradesPasted}
-              onChange={(e) => setGradesPasted(e.target.value)}
-              placeholder={"Exemplo:\n12345: 9.5\n67890 8,0\nABC01   7.2\nXYZ99 6.0 (Matrícula não existente no sistema)"}
-              rows={8}
+              onChange={handleGradesPastedChange}
+              placeholder={
+                selectedFileForAI 
+                ? "Conteúdo do arquivo selecionado será processado pela IA."
+                : "Exemplo:\n12345: 9.5\n67890 8,0\nABC01   7.2"
+              }
+              rows={selectedFileForAI ? 3 : 8}
               className="mt-1"
-              disabled={!selectedProvaId}
+              disabled={!selectedProvaId || !!selectedFileForAI}
             />
           </div>
           <input 
@@ -417,24 +454,24 @@ export default function LancarNotasPage() {
             ref={fileInputRef} 
             onChange={handleFileChange} 
             style={{ display: 'none' }} 
-            accept=".txt,.csv,.text" 
+            accept=".txt,.csv,.text,image/*,application/pdf" 
           />
           <div className="flex flex-wrap gap-2">
             <Button 
                 onClick={() => fileInputRef.current?.click()} 
-                disabled={!selectedProvaId} 
+                disabled={!selectedProvaId || isProcessingAI} 
                 variant="outline"
                 className="w-full sm:w-auto"
             >
-                <FileUp className="mr-2 h-5 w-5" /> Extrair de Arquivo
+                <FileUp className="mr-2 h-5 w-5" /> Extrair de Arquivo (.txt, .csv, .png, .jpg, .pdf)
             </Button>
             <Button 
                 onClick={handleProcessGrades} 
-                disabled={isProcessingAI || !selectedProvaId || !gradesPasted.trim()} 
+                disabled={isProcessingAI || !canProcess} 
                 className="w-full sm:w-auto flex-grow bg-accent hover:bg-accent/90 text-accent-foreground"
             >
                 {isProcessingAI ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <UploadCloud className="mr-2 h-5 w-5" />}
-                {isProcessingAI ? "Processando com IA..." : "Processar Notas com IA"}
+                {isProcessingAI ? "Processando com IA..." : "Processar com IA"}
             </Button>
           </div>
         </CardContent>
@@ -453,8 +490,9 @@ export default function LancarNotasPage() {
                 Resultado do Processamento
             </CardTitle>
             <CardDescription>
-              Total de Linhas: {processingResult.summary.totalLines} | 
-              Extraídas: {processingResult.summary.successfullyParsed} | 
+              Fonte: {selectedFileForAI ? `Arquivo (${selectedFileForAI.name})` : "Texto Colado"} | 
+              Entradas Identificadas pela IA: {processingResult.summary.totalSourceEntries} | 
+              Extraídas com Sucesso: {processingResult.summary.successfullyParsed} | 
               Válidas (Matrícula OK): <span className="font-semibold text-green-600">{processingResult.summary.validEntries}</span> | 
               Matr. Inválida: <span className="font-semibold text-red-600">{processingResult.summary.invalidMatricula}</span> | 
               Formato Nota Inválido: <span className="font-semibold text-orange-600">{processingResult.summary.invalidGradeFormat}</span> |
@@ -478,12 +516,12 @@ export default function LancarNotasPage() {
                 <TableBody>
                   {processingResult.processedEntries.map((entry, index) => (
                     <TableRow 
-                        key={entry.matricula + '-' + index} // Ensure unique key if matriculas can repeat in input
+                        key={entry.matricula + '-' + index + '-' + entry.gradeRaw} 
                         className={
                         entry.status === 'valid' ? 'bg-green-500/10 hover:bg-green-500/20' : 
                        (entry.status === 'invalid_matricula' && !forceSaveOverride[index]) ? 'bg-red-500/10 hover:bg-red-500/20' :
                        (entry.status === 'invalid_matricula' && forceSaveOverride[index]) ? 'bg-yellow-500/10 hover:bg-yellow-500/20' :
-                       entry.status === 'invalid_grade_format' ? 'bg-orange-500/10 hover:bg-orange-500/20' : ''
+                       entry.status === 'invalid_grade_format' || entry.status === 'invalid_grade_value' ? 'bg-orange-500/10 hover:bg-orange-500/20' : ''
                     }>
                       <TableCell>{entry.matricula}</TableCell>
                       <TableCell>{entry.gradeRaw}</TableCell>
@@ -494,8 +532,7 @@ export default function LancarNotasPage() {
                           entry.status === 'valid' ? 'bg-green-200 text-green-800' :
                           entry.status === 'invalid_matricula' && !forceSaveOverride[index] ? 'bg-red-200 text-red-800' :
                           entry.status === 'invalid_matricula' && forceSaveOverride[index] ? 'bg-yellow-200 text-yellow-800' :
-                          entry.status === 'invalid_grade_format' ? 'bg-orange-200 text-orange-800' :
-                          entry.status === 'invalid_grade_value' ? 'bg-yellow-200 text-yellow-800' :
+                          entry.status === 'invalid_grade_format' || entry.status === 'invalid_grade_value' ? 'bg-orange-200 text-orange-800' :
                           'bg-gray-200 text-gray-800'
                         }`}>
                           {entry.status === 'valid' && "Válido"}
@@ -543,6 +580,3 @@ export default function LancarNotasPage() {
     </div>
   );
 }
-
-
-    
