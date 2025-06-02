@@ -11,7 +11,7 @@ import {
   Printer,
   Megaphone,
   CalendarPlus,
-  CalendarDays,
+  ListPlus, // Changed from CalendarDays
   BarChart3,
   PackagePlus,
   Users, 
@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { collection, query, where, getDocs, doc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider"; // Added Slider import
 import { Loader2 } from "lucide-react";
 
 interface TurmaData {
@@ -52,6 +53,7 @@ export default function ManagementPage() {
   const router = useRouter(); 
   const { toast } = useToast();
 
+  // State for "Adicionar Aluno à Turma" dialog
   const [isAddStudentToTurmaDialogOpen, setIsAddStudentToTurmaDialogOpen] = useState(false);
   const [studentMatriculaToAdd, setStudentMatriculaToAdd] = useState("");
   const [adminSelectedTurmaId, setAdminSelectedTurmaId] = useState<string | undefined>(undefined);
@@ -59,11 +61,19 @@ export default function ManagementPage() {
   const [loadingTurmas, setLoadingTurmas] = useState(false);
   const [isProcessingAssignment, setIsProcessingAssignment] = useState(false);
 
+  // State for "Cadastrar Disciplina" dialog
+  const [isCadastrarDisciplinaDialogOpen, setIsCadastrarDisciplinaDialogOpen] = useState(false);
+  const [newDisciplinaName, setNewDisciplinaName] = useState("");
+  const [newDisciplinaPrioridade, setNewDisciplinaPrioridade] = useState<number[]>([3]); // Slider value is an array
+  const [adminSelectedTurmaIdForDisciplina, setAdminSelectedTurmaIdForDisciplina] = useState<string | undefined>(undefined);
+  const [isProcessingDisciplina, setIsProcessingDisciplina] = useState(false);
+
+
   const isAdmin = userProfile?.role === USER_ROLES.ADMIN;
   const isRepresentative = userProfile?.role === USER_ROLES.REPRESENTATIVE;
 
   const fetchActiveTurmas = useCallback(async () => {
-    if (!isAdmin) return; // Only admins need to fetch all turmas for selection
+    if (!isAdmin) return; 
     setLoadingTurmas(true);
     try {
       const turmasQuery = query(collection(db, "turmas"), where("ativa", "==", true));
@@ -95,10 +105,15 @@ export default function ManagementPage() {
     );
   }
   
-  const handleSimulatedAction = (action: string) => {
+  const handleSimulatedAction = (action: string, details?: any) => {
+    let description = `Ação de gestão "${action}" executada! (Simulação)`;
+    if (details) {
+      description += ` Detalhes: ${JSON.stringify(details)}`;
+    }
     toast({
       title: "Ação Simulada",
-      description: `Ação de gestão "${action}" executada! (Simulação)`,
+      description,
+      duration: 5000,
     });
   };
 
@@ -140,7 +155,6 @@ export default function ManagementPage() {
         return;
       }
 
-      // Assuming matricula is unique, update the first found user.
       const userToUpdateDoc = querySnapshot.docs[0];
       const userToUpdateRef = doc(db, "users", userToUpdateDoc.id);
       
@@ -166,6 +180,48 @@ export default function ManagementPage() {
     } finally {
       setIsProcessingAssignment(false);
     }
+  };
+
+  const handleCadastrarDisciplina = () => {
+    if (!newDisciplinaName.trim()) {
+      toast({ title: "Nome da Disciplina Obrigatório", description: "Por favor, insira um nome para a disciplina.", variant: "destructive" });
+      return;
+    }
+
+    let targetTurmaIdForDisciplina: string | undefined = undefined;
+    let targetTurmaNameForDisciplina: string | undefined = undefined;
+
+    if (isAdmin) {
+      if (!adminSelectedTurmaIdForDisciplina) {
+        toast({ title: "Turma Necessária", description: "Por favor, selecione a turma para a disciplina.", variant: "destructive" });
+        return;
+      }
+      targetTurmaIdForDisciplina = adminSelectedTurmaIdForDisciplina;
+      targetTurmaNameForDisciplina = activeTurmas.find(t => t.id === targetTurmaIdForDisciplina)?.nome || "Turma Desconhecida";
+    } else if (isRepresentative && userProfile.turmaId && userProfile.turmaNome) {
+      targetTurmaIdForDisciplina = userProfile.turmaId;
+      targetTurmaNameForDisciplina = userProfile.turmaNome;
+    } else {
+        toast({ title: "Erro de Configuração", description: "Não foi possível determinar a turma para a disciplina.", variant: "destructive" });
+        return;
+    }
+    
+    setIsProcessingDisciplina(true);
+    // Simulate saving
+    handleSimulatedAction("Cadastrar Disciplina", {
+      nome: newDisciplinaName,
+      prioridade: newDisciplinaPrioridade[0],
+      turmaId: targetTurmaIdForDisciplina,
+      turmaNome: targetTurmaNameForDisciplina,
+    });
+
+    setTimeout(() => { // Simulate async operation
+        setIsCadastrarDisciplinaDialogOpen(false);
+        setNewDisciplinaName("");
+        setNewDisciplinaPrioridade([3]);
+        if (isAdmin) setAdminSelectedTurmaIdForDisciplina(undefined);
+        setIsProcessingDisciplina(false);
+    }, 1000);
   };
 
 
@@ -211,9 +267,93 @@ export default function ManagementPage() {
             <Button variant="default" onClick={() => handleSimulatedAction("Agendar Reuniões")} className="w-full bg-primary/80 hover:bg-primary/70">
               <CalendarPlus className="mr-2 h-5 w-5" /> Agendar Reuniões
             </Button>
-            <Button variant="secondary" onClick={() => handleSimulatedAction("Visualizar Calendário Acadêmico")} className="w-full">
-              <CalendarDays className="mr-2 h-5 w-5" /> Calendário Acadêmico
-            </Button>
+            
+            {/* Cadastrar Disciplina Button & Dialog */}
+            <Dialog open={isCadastrarDisciplinaDialogOpen} onOpenChange={(isOpen) => {
+                setIsCadastrarDisciplinaDialogOpen(isOpen);
+                if (!isOpen) {
+                    setNewDisciplinaName("");
+                    setNewDisciplinaPrioridade([3]);
+                    if (isAdmin) setAdminSelectedTurmaIdForDisciplina(undefined);
+                }
+            }}>
+                <DialogTrigger asChild>
+                    <Button variant="secondary" className="w-full">
+                        <ListPlus className="mr-2 h-5 w-5" /> Cadastrar Disciplina
+                    </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Cadastrar Nova Disciplina</DialogTitle>
+                        <DialogDescription>
+                            Preencha os detalhes da nova disciplina.
+                            {isAdmin && " Selecione a turma à qual esta disciplina pertence."}
+                            {!isAdmin && userProfile?.turmaNome && ` A disciplina será associada à sua turma: ${userProfile.turmaNome}.`}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        {isAdmin && (
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="disciplina-turma" className="text-right">Turma</Label>
+                                {loadingTurmas ? (
+                                    <div className="col-span-3 flex items-center"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando turmas...</div>
+                                ) : (
+                                    <Select value={adminSelectedTurmaIdForDisciplina} onValueChange={setAdminSelectedTurmaIdForDisciplina}>
+                                        <SelectTrigger className="col-span-3">
+                                            <SelectValue placeholder="Selecione a turma" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {activeTurmas.map(turma => (
+                                                <SelectItem key={turma.id} value={turma.id}>{turma.nome}</SelectItem>
+                                            ))}
+                                            {activeTurmas.length === 0 && <p className="p-2 text-sm text-muted-foreground">Nenhuma turma ativa.</p>}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            </div>
+                        )}
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="disciplina-nome" className="text-right">Nome</Label>
+                            <Input 
+                                id="disciplina-nome" 
+                                value={newDisciplinaName} 
+                                onChange={(e) => setNewDisciplinaName(e.target.value)} 
+                                className="col-span-3"
+                                placeholder="Ex: Anatomia I"
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="disciplina-prioridade" className="text-right">Prioridade</Label>
+                            <div className="col-span-3 flex items-center gap-2">
+                                <Slider
+                                    id="disciplina-prioridade"
+                                    min={1}
+                                    max={5}
+                                    step={1}
+                                    value={newDisciplinaPrioridade}
+                                    onValueChange={setNewDisciplinaPrioridade}
+                                    className="flex-grow"
+                                />
+                                <span className="text-sm font-medium w-8 text-center bg-muted/50 p-1 rounded-md">
+                                    {newDisciplinaPrioridade[0]}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsCadastrarDisciplinaDialogOpen(false)} disabled={isProcessingDisciplina}>Cancelar</Button>
+                        <Button 
+                            type="button" 
+                            onClick={handleCadastrarDisciplina}
+                            disabled={isProcessingDisciplina || !newDisciplinaName.trim() || (isAdmin && !adminSelectedTurmaIdForDisciplina)}
+                        >
+                           {isProcessingDisciplina ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                           {isProcessingDisciplina ? "Salvando..." : "Salvar Disciplina"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <Button variant="outline" onClick={() => handleSimulatedAction("Painel de Desempenho da Turma")} className="w-full">
               <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma
             </Button>
@@ -228,7 +368,7 @@ export default function ManagementPage() {
               }}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="w-full">
-                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Turma
+                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Minha Turma
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
@@ -275,9 +415,9 @@ export default function ManagementPage() {
                         )}
                       </div>
                     )}
-                    {!isAdmin && isRepresentative && (
+                    {!isAdmin && isRepresentative && userProfile?.turmaNome && (
                         <p className="text-sm text-muted-foreground col-span-4 text-center">
-                            Atribuindo à sua turma: <span className="font-semibold text-foreground">{userProfile?.turmaNome}</span>.
+                            Atribuindo à sua turma: <span className="font-semibold text-foreground">{userProfile.turmaNome}</span>.
                         </p>
                     )}
                   </div>
@@ -318,7 +458,7 @@ export default function ManagementPage() {
           <div className="mt-6 p-4 border border-dashed border-secondary/30 rounded-md bg-secondary/5">
             <h3 className="text-xl font-semibold text-secondary-foreground/80 mb-2">Avisos e Próximos Passos:</h3>
             <ul className="list-disc list-inside text-sm text-secondary-foreground/70 space-y-1">
-              <li>As funcionalidades de "Lançar Notas", "Imprimir Chamada", etc., são simulações. O desenvolvimento completo é necessário para torná-las operacionais.</li>
+              <li>As funcionalidades de "Lançar Notas", "Imprimir Chamada", "Cadastrar Disciplina", etc., são simulações. O desenvolvimento completo é necessário para torná-las operacionais com um banco de dados.</li>
               <li>A funcionalidade "Adicionar Aluno à Turma" agora interage com o Firestore para atualizar o `turmaId` do aluno especificado.</li>
               <li>Certifique-se de que as regras de segurança do Firestore permitem que administradores e representantes realizem as operações necessárias.</li>
             </ul>
@@ -329,3 +469,4 @@ export default function ManagementPage() {
   );
 }
 
+    
