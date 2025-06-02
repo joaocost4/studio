@@ -17,7 +17,7 @@ import {
   Users, 
   Briefcase,
   UserPlus,
-  FlaskConical // Added for Teste button
+  FlaskConical
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
@@ -58,11 +58,10 @@ export default function ManagementPage() {
     if (action === "Gerir Turmas") {
       router.push('/admin/turmas');
     } else if (action === "Adicionar Aluno à Turma") {
-      // Here you would implement the actual logic to add the student.
-      // For now, it's a simulation.
+      // This is the simulation part, actual logic would involve Firestore updates
       toast({
         title: "Ação Simulada",
-        description: `Aluno com matrícula "${details.matricula}" seria adicionado à turma "${userProfile?.turmaNome}".`,
+        description: `Aluno com matrícula "${details.matricula}" seria adicionado à turma "${userProfile?.turmaNome}". (Simulação)`,
       });
       setIsAddStudentToTurmaDialogOpen(false);
       setStudentMatriculaToAdd("");
@@ -123,15 +122,19 @@ export default function ManagementPage() {
               <CalendarDays className="mr-2 h-5 w-5" /> Calendário Acadêmico
             </Button>
 
-            {/* Botão Adicionar Aluno à Turma para Representantes */}
+            <Button variant="outline" onClick={() => handleManagementAction("Painel de Desempenho da Turma")} className="w-full">
+              <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma
+            </Button>
+
+            {/* Botão "Adicionar à Minha Turma" (antigo "Teste") agora abre o diálogo */}
             {canAddStudentToTurma && (
               <Dialog open={isAddStudentToTurmaDialogOpen} onOpenChange={(isOpen) => {
                 setIsAddStudentToTurmaDialogOpen(isOpen);
-                if (!isOpen) setStudentMatriculaToAdd(""); // Limpa o campo ao fechar
+                if (!isOpen) setStudentMatriculaToAdd(""); 
               }}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full text-accent-foreground border-accent hover:bg-accent/10">
-                    <UserPlus className="mr-2 h-5 w-5 text-accent" /> Adicionar Aluno à Turma
+                  <Button variant="outline" className="w-full"> {/* Styling from "Teste" button, text changed */}
+                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Minha Turma
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
@@ -172,13 +175,7 @@ export default function ManagementPage() {
                 </DialogContent>
               </Dialog>
             )}
-
-            <Button variant="outline" onClick={() => handleManagementAction("Painel de Desempenho da Turma")} className="w-full">
-              <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma
-            </Button>
-            <Button variant="outline" onClick={() => handleManagementAction("Teste")} className="w-full">
-              <FlaskConical className="mr-2 h-5 w-5" /> Teste
-            </Button>
+            
              <Button variant="default" onClick={() => handleManagementAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
               <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
             </Button>
