@@ -91,7 +91,7 @@ export default function AdminPage() {
 
     } catch (error) {
       console.error("Error fetching admin data:", error);
-      toast({ title: "Erro ao carregar dados", description: "Não foi possível buscar os dados para administração.", variant: "destructive" });
+      toast({ title: "Erro ao carregar dados", description: "Não foi possível buscar os dados para administração. Verifique as regras do Firestore.", variant: "destructive" });
     } finally {
       setLoadingData(false);
     }
@@ -137,7 +137,29 @@ export default function AdminPage() {
       fetchData(); // Refresh users list
     } catch (error: any) {
       console.error("Error adding user:", error);
-      toast({ title: "Erro ao adicionar usuário", description: error.message, variant: "destructive" });
+      let description = "Ocorreu um erro desconhecido ao adicionar o usuário.";
+      if (error.code) {
+        switch (error.code) {
+          case 'auth/email-already-in-use':
+            description = `A matrícula "${newUserMatricula}" já está em uso (email ${newUserMatricula}@${FIREBASE_EMAIL_DOMAIN} já existe).`;
+            break;
+          case 'auth/invalid-email':
+            description = `O formato da matrícula é inválido para criar o email de autenticação (${newUserMatricula}@${FIREBASE_EMAIL_DOMAIN}).`;
+            break;
+          case 'auth/weak-password':
+            description = "A senha fornecida é muito fraca. Use pelo menos 6 caracteres.";
+            break;
+          case 'auth/operation-not-allowed':
+            description = "A criação de usuários com email/senha não está habilitada no seu projeto Firebase.";
+            break;
+          case 'auth/invalid-credential':
+             description = "As credenciais fornecidas para a criação do usuário são inválidas (erro inesperado).";
+             break;
+          default:
+            description = error.message || "Erro desconhecido.";
+        }
+      }
+      toast({ title: "Erro ao adicionar usuário", description, variant: "destructive" });
     }
   };
 
@@ -228,7 +250,7 @@ export default function AdminPage() {
                 <DialogHeader>
                   <DialogTitle>Adicionar Novo Usuário</DialogTitle>
                   <DialogDescription>
-                    Preencha os detalhes para criar uma nova conta de usuário.
+                    Preencha os detalhes para criar uma nova conta de usuário. O email de autenticação será {`matricula@${FIREBASE_EMAIL_DOMAIN}`}.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
@@ -250,7 +272,7 @@ export default function AdminPage() {
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="role" className="text-right">Função</Label>
-                     <select id="role" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as USER_ROLES)} className="col-span-3 border border-input rounded-md p-2">
+                     <select id="role" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as USER_ROLES)} className="col-span-3 border border-input rounded-md p-2 bg-background text-foreground">
                         {Object.values(USER_ROLES).map(role => (
                           <option key={role} value={role}>{role}</option>
                         ))}
