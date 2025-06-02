@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { User as FirebaseUser } from 'firebase/auth';
@@ -8,12 +9,13 @@ import type { ReactNode } from 'react';
 import React, { createContext, useEffect, useState } from 'react';
 import { auth, db } from '@/lib/firebase';
 import type { UserRole } from '@/lib/constants';
-import { USER_ROLES } from '@/lib/constants';
+import { USER_ROLES, FIREBASE_EMAIL_DOMAIN } from '@/lib/constants';
 
 interface UserProfile {
   uid: string;
   email: string | null; // Actual email for communication
   matricula: string;
+  nomeCompleto: string; // Added field for full name
   role: UserRole;
 }
 
@@ -38,9 +40,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
-        // Check if it's our custom matricula-based email
-        // This is a simplified check; in a real app, you might have more robust verification
-        if (user.email?.endsWith(`@${process.env.NEXT_PUBLIC_FIREBASE_EMAIL_DOMAIN || 'doceacesso.app'}`)) {
+        if (user.email?.endsWith(`@${process.env.NEXT_PUBLIC_FIREBASE_EMAIL_DOMAIN || FIREBASE_EMAIL_DOMAIN}`)) {
           setIsMatriculaVerified(true);
         } else {
           setIsMatriculaVerified(false); 
@@ -53,13 +53,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const data = userDocSnap.data();
             setUserProfile({
               uid: user.uid,
-              email: data.actualEmail || user.email, // Use stored actualEmail if available
+              email: data.actualEmail || user.email,
               matricula: data.matricula,
+              nomeCompleto: data.nomeCompleto || data.matricula, // Use matricula as fallback
               role: data.role || USER_ROLES.USER,
             });
           } else {
-            // User exists in Auth but not in Firestore, maybe mid-registration or an issue
-            setUserProfile(null); 
+            // User in Auth but not Firestore, possible mid-registration or issue
+            // Create a minimal profile, registration should ideally complete this.
+             const extractedMatricula = user.email?.split('@')[0] || 'N/A';
+             setUserProfile({
+                uid: user.uid,
+                email: user.email,
+                matricula: extractedMatricula,
+                nomeCompleto: extractedMatricula, // Fallback to matricula
+                role: USER_ROLES.USER,
+            });
           }
         } catch (error) {
           console.error("Error fetching user profile:", error);

@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -12,11 +13,10 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarSeparator,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Home, Calculator, Users, ShieldCheck, LogOut, Settings, Info, Apple, Atom } from "lucide-react";
+import { Home, Calculator, Users, ShieldCheck, LogOut, Apple } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { USER_ROLES } from "@/lib/constants";
@@ -48,19 +48,35 @@ export function AppSidebar() {
     { href: "/admin", label: "Testes Admin", icon: ShieldCheck, roles: [USER_ROLES.ADMIN] },
   ];
 
-  const getInitials = (name?: string | null) => {
-    if (!name) return "DA"; // Doce Acesso
-    return name.substring(0, 2).toUpperCase();
+  const getInitials = (fullName?: string | null, matricula?: string | null) => {
+    if (fullName && fullName.trim()) {
+      const parts = fullName.trim().split(' ');
+      if (parts.length > 1 && parts[0] && parts[parts.length - 1]) {
+        // Use first letter of first name and first letter of last name
+        return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+      }
+      if (parts.length === 1 && parts[0]) {
+        // Use first two letters of the single name
+        return parts[0].substring(0, 2).toUpperCase();
+      }
+    }
+    if (matricula) {
+      return matricula.substring(0, 2).toUpperCase();
+    }
+    return "DA"; // Fallback for Doce Acesso or if no name/matricula
   };
   
   const isActive = (href: string, isSubItem = false) => {
     if (isSubItem) return pathname === href;
+    // For parent items, check if the current path starts with the item's href.
+    // Ensure dashboard (exact match) or other parent routes like /calculators correctly activate.
+    if (href === "/dashboard") return pathname === href;
     return pathname.startsWith(href);
   };
 
   const renderNavItems = (items: NavItem[], isSubMenu = false) => {
     return items.filter(item => {
-        if (loading) return false; // Don't render if auth state is loading
+        if (loading && !userProfile) return false; // Don't render if auth state is loading initially and no profile yet
         if (!item.roles) return true; // No specific roles required
         return userProfile && item.roles.includes(userProfile.role);
       }).map((item) => (
@@ -71,7 +87,7 @@ export function AppSidebar() {
                 asChild={!isSubMenu}
                 className="font-medium"
                 isActive={isActive(item.href)}
-                // @ts-ignore // variant prop is valid on Button but TS struggles with asChild
+                // @ts-ignore 
                 variant={isActive(item.href) ? "secondary" : "ghost"} 
               >
                  <Link href={item.href} className="flex items-center w-full">
@@ -139,14 +155,19 @@ export function AppSidebar() {
         {userProfile && (
           <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
             <Avatar className="h-10 w-10 border-2 border-sidebar-primary">
-              <AvatarImage src={userProfile.email ? `https://avatar.vercel.sh/${userProfile.email}.png` : undefined} alt={userProfile.matricula} data-ai-hint="user avatar" />
+              <AvatarImage src={userProfile.email ? `https://avatar.vercel.sh/${userProfile.email}.png` : undefined} alt={userProfile.nomeCompleto || userProfile.matricula} data-ai-hint="user avatar" />
               <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">
-                {getInitials(userProfile.matricula)}
+                {getInitials(userProfile.nomeCompleto, userProfile.matricula)}
               </AvatarFallback>
             </Avatar>
-            <div className="group-data-[collapsible=icon]:hidden">
-              <p className="text-sm font-semibold text-sidebar-foreground">{userProfile.matricula}</p>
-              <p className="text-xs text-sidebar-foreground/70">{userProfile.role}</p>
+            <div className="group-data-[collapsible=icon]:hidden overflow-hidden">
+              <p className="text-sm font-semibold text-sidebar-foreground truncate" title={userProfile.nomeCompleto || userProfile.matricula}>
+                {userProfile.nomeCompleto || userProfile.matricula}
+              </p>
+              <p className="text-xs text-sidebar-foreground/70 truncate">
+                {userProfile.matricula}
+                {userProfile.role && userProfile.role !== USER_ROLES.USER ? ` - ${userProfile.role}` : ''}
+              </p>
             </div>
           </div>
         )}

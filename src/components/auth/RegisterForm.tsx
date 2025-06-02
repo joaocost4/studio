@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -27,6 +28,7 @@ import Link from "next/link";
 import { UserPlus, Eye, EyeOff } from "lucide-react";
 
 const formSchema = z.object({
+  nomeCompleto: z.string().min(3, "Nome completo deve ter pelo menos 3 caracteres."),
   matricula: z.string().min(1, "Matrícula é obrigatória."),
   email: z.string().email("Email inválido."),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres."),
@@ -49,6 +51,7 @@ export function RegisterForm() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      nomeCompleto: "",
       matricula: "",
       email: "",
       password: "",
@@ -70,6 +73,7 @@ export function RegisterForm() {
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         matricula: values.matricula,
+        nomeCompleto: values.nomeCompleto, // Save full name
         actualEmail: values.email, // Store the real email separately
         role: USER_ROLES.USER, // Default role
         createdAt: new Date(),
@@ -103,6 +107,19 @@ export function RegisterForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="nomeCompleto"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Nome Completo</FormLabel>
+              <FormControl>
+                <Input placeholder="Seu nome completo" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <FormField
           control={form.control}
           name="matricula"
