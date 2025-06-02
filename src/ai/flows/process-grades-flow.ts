@@ -22,7 +22,7 @@ const GradesParserPromptInputSchema = z.union([
   }),
   z.object({
     inputType: z.literal('file'),
-    fileDataUri: z.string().describe("A file (image or PDF) as a data URI, containing grades."),
+    fileDataUri: z.string().describe("A file (image or PDF) as a data URI, containing grades. Expected format: 'data:<mimetype>;base64,<encoded_data>'."),
     fileMimeType: z.string().describe("The MIME type of the file.")
   })
 ]);
@@ -90,7 +90,7 @@ const gradesParserPrompt = ai.definePrompt({
   prompt: `Você é um assistente especializado em analisar dados de alunos para extrair matrículas e suas respectivas notas.
 Sua principal tarefa é identificar corretamente cada matrícula e a nota associada a ela, preservando a relação par-a-par.
 
-{{#if (eq inputType "file")}}
+{{#if fileDataUri}}
 A entrada é um arquivo (imagem ou PDF). Analise o conteúdo visual e textual do arquivo para identificar pares de matrícula e nota.
 Preste muita atenção ao layout. Matrículas e notas podem estar em colunas adjacentes, ou uma matrícula pode estar em uma linha e a nota correspondente na mesma linha, mas em uma coluna diferente, ou até mesmo em uma linha subsequente próxima e claramente associada.
 Realize OCR se for uma imagem. O objetivo é extrair a matrícula e a nota que estão visualmente ou contextualmente ligadas.
