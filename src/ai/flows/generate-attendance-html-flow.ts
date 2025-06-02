@@ -3,7 +3,7 @@
 /**
  * @fileOverview A Genkit flow for generating HTML content for a student attendance list.
  *
- * - generateAttendanceHtml - Generates HTML for an attendance list for a given class.
+ * - generateAttendanceHtml - Generates HTML for an attendance list for a given class, with optional additional attendees.
  * - GenerateAttendanceHtmlInput - Input type for the flow.
  * - GenerateAttendanceHtmlOutput - Output type for the flow.
  */
@@ -24,8 +24,14 @@ interface TurmaData {
     nome: string;
 }
 
+const AdditionalAttendeeSchema = z.object({
+  matricula: z.string().describe("The matricula or identifier for the additional attendee."),
+  nomeCompleto: z.string().describe("The full name of the additional attendee."),
+});
+
 const GenerateAttendanceHtmlInputSchema = z.object({
   turmaId: z.string().describe("The ID of the class (turma) for which to generate the attendance list."),
+  additionalAttendees: z.array(AdditionalAttendeeSchema).optional().describe("Optional list of attendees to add to the main student list."),
 });
 export type GenerateAttendanceHtmlInput = z.infer<typeof GenerateAttendanceHtmlInputSchema>;
 
@@ -41,6 +47,7 @@ const attendanceHtmlPrompt = ai.definePrompt({
   input: { schema: z.object({
     turmaName: z.string(),
     students: z.array(z.object({ matricula: z.string(), nomeCompleto: z.string() })),
+    additionalAttendees: z.array(AdditionalAttendeeSchema).optional(),
     currentDate: z.string(),
   })},
   output: { schema: z.object({ htmlString: z.string() }) },
@@ -51,17 +58,24 @@ const attendanceHtmlPrompt = ai.definePrompt({
     Given the following data:
     - Turma Name: {{{turmaName}}}
     - Current Date: {{{currentDate}}}
-    - Students:
+    - Enrolled Students:
       {{#each students}}
       - Matricula: {{this.matricula}}, Name: {{this.nomeCompleto}}
       {{/each}}
+    {{#if additionalAttendees.length}}
+    - Additional Participants:
+      {{#each additionalAttendees}}
+      - Identifier: {{this.matricula}}, Name: {{this.nomeCompleto}}
+      {{/each}}
+    {{/if}}
 
     Generate an HTML string that includes:
     1.  A main title "Lista de Chamada".
     2.  Sub-headers for "Turma: {{{turmaName}}}" and "Data: {{{currentDate}}}".
     3.  A table with the following columns: "Matrícula", "Nome Completo", "Presença", "Assinatura".
         - "Presença" and "Assinatura" columns should be empty cells for manual filling.
-        - Each student from the provided list should be a row in this table.
+        - Each student from the "Enrolled Students" list should be a row in this table.
+        - Each participant from the "Additional Participants" list (if any) should also be a row in this table, following the enrolled students.
     
     The HTML should be simple, clean, and use standard table tags (<table>, <thead>, <tbody>, <tr>, <th>, <td>).
     Do not include <html>, <head>, or <body> tags. Only provide the content for the list itself (title, headers, table).
@@ -83,7 +97,7 @@ const generateAttendanceHtmlFlow = ai.defineFlow(
     inputSchema: GenerateAttendanceHtmlInputSchema,
     outputSchema: GenerateAttendanceHtmlOutputSchema,
   },
-  async ({ turmaId }) => {
+  async ({ turmaId, additionalAttendees }) => {
     let turmaName = "Desconhecida";
     try {
         const turmaDocRef = doc(db, "turmas", turmaId);
@@ -117,6 +131,7 @@ const generateAttendanceHtmlFlow = ai.defineFlow(
     const { output } = await attendanceHtmlPrompt({
       turmaName,
       students,
+      additionalAttendees: additionalAttendees || [],
       currentDate,
     });
 
@@ -129,9 +144,6 @@ const generateAttendanceHtmlFlow = ai.defineFlow(
       };
     }
     
-    // The prompt asks for no html/head/body, so we wrap it for basic styling if needed,
-    // or ensure the receiving page styles it. For now, just return the core.
-    // The CSS on the print page should handle table styling.
     return {
       htmlContent: output.htmlString,
       turmaName,
