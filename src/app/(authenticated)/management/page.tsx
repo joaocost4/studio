@@ -37,7 +37,7 @@ export default function ManagementPage() {
   };
 
   const isAdmin = userProfile.role === USER_ROLES.ADMIN;
-  const pageIcon = isAdmin ? Briefcase : ClipboardSignature; // Different main icon for Admin vs Rep
+  const PageIconComponent = isAdmin ? Briefcase : ClipboardSignature; // Different main icon for Admin vs Rep
   const pageTitle = isAdmin ? "Página de Gestão Avançada" : "Painel do Representante de Turma";
   const pageDescription = isAdmin 
     ? "Ferramentas administrativas e de gestão de representantes."
@@ -47,7 +47,7 @@ export default function ManagementPage() {
     <div className="container mx-auto py-8 px-4">
       <Card className="shadow-lg border-2 border-primary/30 rounded-xl">
         <CardHeader className="text-center bg-primary/10">
-          <svelte:component this={pageIcon} className="mx-auto h-16 w-16 text-primary mb-4" />
+          <PageIconComponent className="mx-auto h-16 w-16 text-primary mb-4" />
           <CardTitle className="text-3xl font-headline text-primary">{pageTitle}</CardTitle>
           <CardDescription className="text-muted-foreground">
             {pageDescription}
