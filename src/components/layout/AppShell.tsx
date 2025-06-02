@@ -13,13 +13,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
       <SidebarInset className="flex flex-col">
-         <header className="sticky top-0 z-10 flex h-[57px] items-center gap-1 border-b bg-background/80 backdrop-blur-sm px-4 md:hidden">
-            <SidebarTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden">
-                    <PanelLeft />
-                    <span className="sr-only">Toggle Menu</span>
-                </Button>
-            </SidebarTrigger>
+        <header className="sticky top-0 z-10 flex h-[57px] items-center gap-1 border-b bg-background/80 backdrop-blur-sm px-4 md:hidden">
+            <SidebarTrigger />
             {/* Add Mobile Header Content Here if needed, like App Name */}
         </header>
         <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">
