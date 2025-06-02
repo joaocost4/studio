@@ -14,13 +14,16 @@ import {
   CalendarDays,
   BarChart3,
   PackagePlus,
+  Users, // Changed icon for the button
   Briefcase // Fallback or general admin icon
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useRouter } from "next/navigation"; // Import useRouter
 
 export default function ManagementPage() {
   const { userProfile } = useAuth();
   useRequireAuth({ allowedRoles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] });
+  const router = useRouter(); // Initialize useRouter
 
   if (!userProfile || !(userProfile.role === USER_ROLES.ADMIN || userProfile.role === USER_ROLES.REPRESENTATIVE)) {
      return (
@@ -33,7 +36,11 @@ export default function ManagementPage() {
   }
   
   const handleManagementAction = (action: string) => {
-    alert(`Ação de gestão "${action}" executada! (Simulação)`);
+    if (action === "Gerir Turmas") {
+      router.push('/admin'); // Navigate to admin page for Turmas management
+    } else {
+      alert(`Ação de gestão "${action}" executada! (Simulação)`);
+    }
   };
 
   const isAdmin = userProfile.role === USER_ROLES.ADMIN;
@@ -87,8 +94,8 @@ export default function ManagementPage() {
             <div className="mt-6 p-4 border border-dashed border-primary/30 rounded-md bg-primary/5">
               <h3 className="text-xl font-semibold text-primary/80 mb-2">Funções Exclusivas de Admin:</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => handleManagementAction("Definir Permissões Globais")}>
-                  Definir Permissões Globais (Simulação)
+                <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => handleManagementAction("Gerir Turmas")}>
+                  <Users className="mr-2 h-5 w-5" /> Gerir Turmas
                 </Button>
                 <Button variant="ghost" className="text-primary border border-primary hover:bg-primary/10" onClick={() => handleManagementAction("Auditoria do Sistema")}>
                   Auditoria do Sistema (Simulação)
