@@ -57,7 +57,7 @@ interface CalculatorData {
   lastSession: Record<string, any>; 
 }
 
-interface TurmaData {
+interface TurmaData { // Keep this interface for fetching active turmas for user assignment
   id: string;
   nome: string;
   ativa: boolean;
@@ -80,7 +80,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<UserData[]>([]);
   const [calc1Data, setCalc1Data] = useState<CalculatorData[]>([]);
   const [calc2Data, setCalc2Data] = useState<CalculatorData[]>([]);
-  const [turmas, setTurmas] = useState<TurmaData[]>([]);
+  const [activeTurmas, setActiveTurmas] = useState<TurmaData[]>([]); // Only active turmas for user assignment
   const [appSettings, setAppSettings] = useState<AppSettingsData>({
     avisoTrocarTurma: false,
     avisoRepresentante: false,
@@ -118,29 +118,23 @@ export default function AdminPage() {
   const [calc1SearchTerm, setCalc1SearchTerm] = useState("");
   const [calc2SearchTerm, setCalc2SearchTerm] = useState("");
 
-  // Turma Dialog States
-  const [isAddTurmaDialogOpen, setIsAddTurmaDialogOpen] = useState(false);
-  const [newTurmaName, setNewTurmaName] = useState("");
-  const [newTurmaAtiva, setNewTurmaAtiva] = useState(true);
-  const [isEditTurmaDialogOpen, setIsEditTurmaDialogOpen] = useState(false);
-  const [editingTurma, setEditingTurma] = useState<TurmaData | null>(null);
-  const [editTurmaName, setEditTurmaName] = useState("");
-  const [editTurmaAtiva, setEditTurmaAtiva] = useState(true);
-
-
-  const activeTurmas = useMemo(() => turmas.filter(t => t.ativa), [turmas]);
-
   const fetchData = useCallback(async () => {
     setLoadingData(true);
     try {
-      const turmasSnapshot = await getDocs(collection(db, "turmas"));
+      // Fetch active turmas for user assignment dropdowns
+      const turmasSnapshot = await getDocs(query(collection(db, "turmas"), where("ativa", "==", true)));
       const turmasList = turmasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TurmaData));
-      setTurmas(turmasList);
+      setActiveTurmas(turmasList); // Used for user assignment selects
+
+      // Fetch all turmas (including inactive) to get turma names for display in Users table
+      const allTurmasSnapshot = await getDocs(collection(db, "turmas"));
+      const allTurmasList = allTurmasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TurmaData));
+
 
       const usersSnapshot = await getDocs(collection(db, "users"));
       const usersList = usersSnapshot.docs.map(doc => {
         const data = doc.data() as Omit<UserData, 'id' | 'turmaNome'>;
-        const turma = turmasList.find(t => t.id === data.turmaId);
+        const turma = allTurmasList.find(t => t.id === data.turmaId); // Use allTurmasList for name lookup
         return { 
           id: doc.id, 
           ...data,
@@ -158,15 +152,14 @@ export default function AdminPage() {
       setCalc2Data(calc2List);
 
       const settingsDocRef = doc(db, "settings", "appGlobalSettings");
-      const settingsDocSnap = await getFirestoreDoc(settingsDocRef); // Using aliased getDoc
+      const settingsDocSnap = await getFirestoreDoc(settingsDocRef);
       if (settingsDocSnap.exists()) {
         setAppSettings(settingsDocSnap.data() as AppSettingsData);
       } else {
-        // Initialize default settings if not exist
         const defaultSettings: AppSettingsData = {
           avisoTrocarTurma: false,
           avisoRepresentante: false,
-          avisoInstalarApp: true, // Default to true for install prompt
+          avisoInstalarApp: true, 
           updatedAt: serverTimestamp() as Timestamp
         };
         await setDoc(settingsDocRef, defaultSettings);
@@ -351,80 +344,6 @@ export default function AdminPage() {
     }
   };
 
-  // Turma CRUD Actions
-  const handleAddTurma = async () => {
-    if (!newTurmaName.trim()) {
-      toast({ title: "Nome da Turma Obrigatório", description: "Por favor, insira um nome para a turma.", variant: "destructive" });
-      return;
-    }
-    try {
-      await addDoc(collection(db, "turmas"), {
-        nome: newTurmaName,
-        ativa: newTurmaAtiva,
-        createdAt: serverTimestamp(),
-      });
-      toast({ title: "Turma Adicionada", description: `Turma "${newTurmaName}" criada com sucesso.` });
-      setIsAddTurmaDialogOpen(false);
-      setNewTurmaName("");
-      setNewTurmaAtiva(true);
-      fetchData();
-    } catch (error) {
-      console.error("Error adding turma:", error);
-      toast({ title: "Erro ao adicionar turma", variant: "destructive" });
-    }
-  };
-
-  const handleEditTurmaClick = (turma: TurmaData) => {
-    setEditingTurma(turma);
-    setEditTurmaName(turma.nome);
-    setEditTurmaAtiva(turma.ativa);
-    setIsEditTurmaDialogOpen(true);
-  };
-
-  const handleUpdateTurma = async () => {
-    if (!editingTurma || !editTurmaName.trim()) {
-      toast({ title: "Nome da Turma Obrigatório", description: "Por favor, insira um nome para a turma.", variant: "destructive" });
-      return;
-    }
-    try {
-      const turmaDocRef = doc(db, "turmas", editingTurma.id);
-      await updateDoc(turmaDocRef, {
-        nome: editTurmaName,
-        ativa: editTurmaAtiva,
-      });
-      toast({ title: "Turma Atualizada", description: `Turma "${editTurmaName}" atualizada.` });
-      setIsEditTurmaDialogOpen(false);
-      setEditingTurma(null);
-      fetchData();
-    } catch (error) {
-      console.error("Error updating turma:", error);
-      toast({ title: "Erro ao atualizar turma", variant: "destructive" });
-    }
-  };
-
-  const handleDeleteTurma = async (turmaId: string, turmaName: string) => {
-    const usersInTurmaQuery = query(collection(db, "users"), where("turmaId", "==", turmaId));
-    const usersInTurmaSnapshot = await getDocs(usersInTurmaQuery);
-
-    if (!usersInTurmaSnapshot.empty) {
-        toast({ 
-            title: "Exclusão Bloqueada", 
-            description: `A turma "${turmaName}" não pode ser excluída pois há ${usersInTurmaSnapshot.size} usuário(s) associado(s) a ela. Remova os usuários da turma primeiro.`,
-            variant: "destructive",
-            duration: 7000 
-        });
-        return;
-    }
-
-    try {
-      await deleteDoc(doc(db, "turmas", turmaId));
-      toast({ title: "Turma Excluída", description: `Turma "${turmaName}" foi excluída.` });
-      fetchData();
-    } catch (error) {
-      console.error("Error deleting turma:", error);
-      toast({ title: "Erro ao excluir turma", variant: "destructive" });
-    }
-  };
 
   // App Settings Toggle
   const handleSettingToggle = async (settingKey: keyof AppSettingsData, value: boolean) => {
@@ -671,109 +590,7 @@ export default function AdminPage() {
           </DialogContent>
         </Dialog>
       )}
-
-      {/* Turmas CRUD */}
-        <Card>
-            <CardHeader>
-                <div className="flex justify-between items-center">
-                    <CardTitle>Gerenciamento de Turmas</CardTitle>
-                    <Dialog open={isAddTurmaDialogOpen} onOpenChange={setIsAddTurmaDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button variant="outline"><Users className="mr-2 h-5 w-5" /> Adicionar Turma</Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px]">
-                            <DialogHeader>
-                                <DialogTitle>Adicionar Nova Turma</DialogTitle>
-                            </DialogHeader>
-                            <div className="grid gap-4 py-4">
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor="turma-name" className="text-right">Nome</Label>
-                                    <Input id="turma-name" value={newTurmaName} onChange={(e) => setNewTurmaName(e.target.value)} className="col-span-3" />
-                                </div>
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor="turma-ativa" className="text-right">Ativa</Label>
-                                    <Switch id="turma-ativa" checked={newTurmaAtiva} onCheckedChange={setNewTurmaAtiva} className="col-span-3 justify-self-start" />
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <Button onClick={handleAddTurma}>Salvar Turma</Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                </div>
-            </CardHeader>
-            <CardContent>
-                {loadingData ? <p>Carregando turmas...</p> : (
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Nome da Turma</TableHead>
-                                <TableHead>Ativa</TableHead>
-                                <TableHead className="text-right">Ações</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {turmas.map((turma) => (
-                                <TableRow key={turma.id}>
-                                    <TableCell>{turma.nome}</TableCell>
-                                    <TableCell>{turma.ativa ? "Sim" : "Não"}</TableCell>
-                                    <TableCell className="text-right space-x-2">
-                                        <Button variant="ghost" size="icon" onClick={() => handleEditTurmaClick(turma)}>
-                                            <Edit3 className="h-4 w-4" />
-                                        </Button>
-                                        <AlertDialog>
-                                            <AlertDialogTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </AlertDialogTrigger>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader>
-                                                    <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
-                                                    <AlertDialogDescription>
-                                                        Tem certeza que deseja excluir a turma "{turma.nome}"? Esta ação não pode ser desfeita.
-                                                    </AlertDialogDescription>
-                                                </AlertDialogHeader>
-                                                <AlertDialogFooter>
-                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={() => handleDeleteTurma(turma.id, turma.nome)} className="bg-destructive hover:bg-destructive/90">Excluir</AlertDialogAction>
-                                                </AlertDialogFooter>
-                                            </AlertDialogContent>
-                                        </AlertDialog>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                )}
-            </CardContent>
-        </Card>
-
-        {/* Edit Turma Dialog */}
-        {editingTurma && (
-            <Dialog open={isEditTurmaDialogOpen} onOpenChange={setIsEditTurmaDialogOpen}>
-                <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                        <DialogTitle>Editar Turma</DialogTitle>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="edit-turma-name" className="text-right">Nome</Label>
-                            <Input id="edit-turma-name" value={editTurmaName} onChange={(e) => setEditTurmaName(e.target.value)} className="col-span-3" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="edit-turma-ativa" className="text-right">Ativa</Label>
-                            <Switch id="edit-turma-ativa" checked={editTurmaAtiva} onCheckedChange={setEditTurmaAtiva} className="col-span-3 justify-self-start" />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditTurmaDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleUpdateTurma}>Salvar Alterações</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        )}
-
+      
        {/* App Global Settings Card */}
         <Card>
             <CardHeader>
@@ -1015,22 +832,23 @@ service cloud.firestore {
       allow read, write: if request.auth != null && 
                            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}';
       // Allow authenticated users to read turmas list for selection
-      // allow list: if request.auth != null; // Consider this if non-admins need to list turmas
+      allow list: if request.auth != null; 
     }
     // App Settings
     match /settings/appGlobalSettings {
        allow read, write: if request.auth != null && 
                            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}';
+       allow read: if request.auth != null; // Allow any authenticated user to read settings
     }
   }
 }`}
                 </pre>
               </li>
-               <li>Ao excluir uma turma, verifique se há usuários associados. O sistema atualmente impede a exclusão se houver usuários vinculados.</li>
+               <li>Ao excluir uma turma (na página dedicada /admin/turmas), verifique se há usuários associados. O sistema atualmente impede a exclusão se houver usuários vinculados.</li>
             </ul>
         </div>
       </CardFooter>
     </div>
   );
 }
-
+    

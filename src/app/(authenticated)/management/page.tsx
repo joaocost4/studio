@@ -37,7 +37,7 @@ export default function ManagementPage() {
   
   const handleManagementAction = (action: string) => {
     if (action === "Gerir Turmas") {
-      router.push('/admin'); // Navigate to admin page for Turmas management
+      router.push('/admin/turmas'); // Navigate to the new turmas management page
     } else {
       alert(`Ação de gestão "${action}" executada! (Simulação)`);
     }
@@ -117,3 +117,5 @@ export default function ManagementPage() {
     </div>
   );
 }
+
+    
