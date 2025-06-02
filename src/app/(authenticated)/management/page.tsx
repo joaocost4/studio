@@ -11,7 +11,7 @@ import {
   Printer,
   Megaphone,
   CalendarPlus,
-  ListPlus, // Changed from CalendarDays
+  ListPlus, 
   BarChart3,
   PackagePlus,
   Users, 
@@ -37,7 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { collection, query, where, getDocs, doc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider"; // Added Slider import
+import { Slider } from "@/components/ui/slider";
 import { Loader2 } from "lucide-react";
 
 interface TurmaData {
@@ -319,7 +319,7 @@ export default function ManagementPage() {
                                 value={newDisciplinaName} 
                                 onChange={(e) => setNewDisciplinaName(e.target.value)} 
                                 className="col-span-3"
-                                placeholder="Ex: Anatomia I"
+                                placeholder="Ex: Processos Biológicos II - 2025.1"
                             />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
@@ -368,7 +368,7 @@ export default function ManagementPage() {
               }}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="w-full">
-                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Minha Turma
+                    <UserPlus className="mr-2 h-5 w-5" /> Adicionar à Turma
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
@@ -438,6 +438,9 @@ export default function ManagementPage() {
             
             <Button variant="default" onClick={() => handleSimulatedAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
               <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
+            </Button>
+             <Button variant="outline" className="w-full" onClick={() => handleSimulatedAction("Teste", {data: "qualquer"})}>
+                <FlaskConical className="mr-2 h-5 w-5" /> Teste
             </Button>
           </div>
 
