@@ -710,7 +710,7 @@ export default function ManagementPage() {
                                         )}
                                     >
                                         <CalendarDays className="mr-2 h-4 w-4" />
-                                        {newProvaData ? format(newProvaData, "PPP", { locale: ptBR }) : <span>Escolha uma data</span>}
+                                        {newProvaData ? format(newProvaData, "dd/MM/yyyy", { locale: ptBR }) : <span>Escolha uma data</span>}
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0">
@@ -780,6 +780,8 @@ export default function ManagementPage() {
     </div>
   );
 }
+    
+
     
 
     
