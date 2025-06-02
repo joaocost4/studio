@@ -5,11 +5,11 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { USER_ROLES } from "@/lib/constants";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, AlertTriangle, TestTube2, Users, FileText, Trash2, Edit3, Eye, UserPlus } from "lucide-react";
+import { ShieldCheck, AlertTriangle, TestTube2, Users, FileText, Trash2, Edit3, Eye, UserPlus, Search } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import React, { useEffect, useState } from "react";
-import { collection, getDocs, doc, deleteDoc, Timestamp, setDoc, serverTimestamp } from "firebase/firestore";
-import { db, auth as firebaseAuth } from "@/lib/firebase"; // Renamed auth to firebaseAuth to avoid conflict
+import React, { useEffect, useState, useMemo } from "react";
+import { collection, getDocs, doc, deleteDoc, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { db, auth as firebaseAuth } from "@/lib/firebase";
 import {
   Table,
   TableBody,
@@ -35,19 +35,21 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { FIREBASE_EMAIL_DOMAIN } from "@/lib/constants";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Interfaces for data
 interface UserData {
-  id: string;
+  id: string; // Firestore document ID (usually user.uid)
+  uid: string; // Firebase Auth UID
   matricula: string;
   nomeCompleto: string;
-  role: string;
+  role: UserRole;
   actualEmail?: string;
-  // other fields as necessary
+  createdAt?: Timestamp;
 }
 
 interface CalculatorData {
-  id: string; // UID of the user who owns this data
+  id: string; // UID of the user who owns this data (document ID)
   matricula: string;
   updatedAt: Timestamp;
   lastSession: Record<string, any>; // The actual calculator inputs
@@ -63,35 +65,52 @@ export default function AdminPage() {
   const [calc2Data, setCalc2Data] = useState<CalculatorData[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
+  // Add User Dialog State
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [newUserMatricula, setNewUserMatricula] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState<USER_ROLES>(USER_ROLES.USER);
+  const [newUserRole, setNewUserRole] = useState<UserRole>(USER_ROLES.USER);
+
+  // Edit User Dialog State
+  const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserData | null>(null);
+  const [editUserNomeCompleto, setEditUserNomeCompleto] = useState("");
+  const [editUserActualEmail, setEditUserActualEmail] = useState("");
+  const [editUserRole, setEditUserRole] = useState<UserRole>(USER_ROLES.USER);
+
+  // View Calculator Data Dialog State
+  const [isViewCalcDataDialogOpen, setIsViewCalcDataDialogOpen] = useState(false);
+  const [viewingCalcData, setViewingCalcData] = useState<CalculatorData | null>(null);
+  const [viewingCalcDataType, setViewingCalcDataType] = useState<"Calc1" | "Calc2" | null>(null);
+  
+  // User Search State
+  const [userSearchTerm, setUserSearchTerm] = useState("");
 
 
   const fetchData = async () => {
     setLoadingData(true);
     try {
-      // Fetch Users
       const usersSnapshot = await getDocs(collection(db, "users"));
       const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
       setUsers(usersList);
 
-      // Fetch Calculator 1 Data
       const calc1Snapshot = await getDocs(collection(db, "calculator1Data"));
       const calc1List = calc1Snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CalculatorData));
       setCalc1Data(calc1List);
 
-      // Fetch Calculator 2 Data
       const calc2Snapshot = await getDocs(collection(db, "calculator2Data"));
       const calc2List = calc2Snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CalculatorData));
       setCalc2Data(calc2List);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching admin data:", error);
-      toast({ title: "Erro ao carregar dados", description: "Não foi possível buscar os dados para administração. Verifique as regras do Firestore.", variant: "destructive" });
+      let description = "Não foi possível buscar os dados para administração. Verifique as regras do Firestore.";
+      if (error.code === 'permission-denied' || error.message?.includes("Missing or insufficient permissions")) {
+        description = "Permissão negada ao buscar dados. Verifique as Regras de Segurança do Firestore para permitir acesso de administrador.";
+      }
+      toast({ title: "Erro ao carregar dados", description, variant: "destructive" });
     } finally {
       setLoadingData(false);
     }
@@ -102,6 +121,17 @@ export default function AdminPage() {
       fetchData();
     }
   }, [userProfile]);
+
+  const filteredUsers = useMemo(() => {
+    if (!userSearchTerm) {
+      return users;
+    }
+    return users.filter(user =>
+      user.nomeCompleto.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      user.matricula.toLowerCase().includes(userSearchTerm.toLowerCase())
+    );
+  }, [users, userSearchTerm]);
+
 
   const handleAdminAction = (action: string) => {
     alert(`Ação administrativa "${action}" executada! (Simulação)`);
@@ -134,7 +164,7 @@ export default function AdminPage() {
       setNewUserEmail("");
       setNewUserPassword("");
       setNewUserRole(USER_ROLES.USER);
-      fetchData(); // Refresh users list
+      fetchData(); 
     } catch (error: any) {
       console.error("Error adding user:", error);
       let description = "Ocorreu um erro desconhecido ao adicionar o usuário.";
@@ -162,20 +192,40 @@ export default function AdminPage() {
       toast({ title: "Erro ao adicionar usuário", description, variant: "destructive" });
     }
   };
+  
+  const handleEditUserClick = (user: UserData) => {
+    setEditingUser(user);
+    setEditUserNomeCompleto(user.nomeCompleto);
+    setEditUserActualEmail(user.actualEmail || "");
+    setEditUserRole(user.role);
+    setIsEditUserDialogOpen(true);
+  };
 
-  const handleEditUser = (userId: string) => {
-    // Placeholder: In a real app, navigate to an edit page or open a modal
-    const userToEdit = users.find(u => u.id === userId);
-    alert(`Editar usuário: ${userToEdit?.nomeCompleto} (ID: ${userId})\nMatrícula: ${userToEdit?.matricula}\nEmail: ${userToEdit?.actualEmail}\nRole: ${userToEdit?.role}\nFuncionalidade de edição completa a ser implementada.`);
+  const handleUpdateUser = async () => {
+    if (!editingUser) return;
+
+    try {
+      const userDocRef = doc(db, "users", editingUser.id);
+      await updateDoc(userDocRef, {
+        nomeCompleto: editUserNomeCompleto,
+        actualEmail: editUserActualEmail,
+        role: editUserRole,
+      });
+      toast({ title: "Usuário Atualizado", description: `Dados de ${editUserNomeCompleto} atualizados.` });
+      setIsEditUserDialogOpen(false);
+      setEditingUser(null);
+      fetchData();
+    } catch (error) {
+      console.error("Error updating user:", error);
+      toast({ title: "Erro ao atualizar usuário", variant: "destructive" });
+    }
   };
 
   const handleDeleteUser = async (userId: string, userName: string) => {
     try {
-      // Note: Deleting a user from Firestore does not delete their Firebase Auth account.
-      // Proper user deletion should handle both. This example only deletes from Firestore.
       await deleteDoc(doc(db, "users", userId));
       toast({ title: "Usuário Excluído", description: `Usuário ${userName} foi excluído do Firestore.` });
-      fetchData(); // Refresh list
+      fetchData(); 
     } catch (error) {
       console.error("Error deleting user:", error);
       toast({ title: "Erro ao excluir usuário", variant: "destructive" });
@@ -183,9 +233,10 @@ export default function AdminPage() {
   };
 
   // Calculator Data Actions
-  const handleViewCalcDetails = (calcId: string, type: "Calc1" | "Calc2") => {
-    const data = type === "Calc1" ? calc1Data.find(d => d.id === calcId) : calc2Data.find(d => d.id === calcId);
-    alert(`Ver detalhes ${type} ID: ${calcId}\nMatrícula: ${data?.matricula}\nDados: ${JSON.stringify(data?.lastSession, null, 2)}\nFuncionalidade de visualização/edição completa a ser implementada.`);
+  const handleViewCalcDetailsClick = (calcData: CalculatorData, type: "Calc1" | "Calc2") => {
+    setViewingCalcData(calcData);
+    setViewingCalcDataType(type);
+    setIsViewCalcDataDialogOpen(true);
   };
 
   const handleDeleteCalcData = async (calcId: string, type: "Calc1" | "Calc2", matricula: string) => {
@@ -193,7 +244,7 @@ export default function AdminPage() {
       const collectionName = type === "Calc1" ? "calculator1Data" : "calculator2Data";
       await deleteDoc(doc(db, collectionName, calcId));
       toast({ title: `Dados da ${type} Excluídos`, description: `Dados para matrícula ${matricula} foram excluídos.` });
-      fetchData(); // Refresh list
+      fetchData(); 
     } catch (error) {
       console.error(`Error deleting ${type} data:`, error);
       toast({ title: `Erro ao excluir dados da ${type}`, variant: "destructive" });
@@ -238,7 +289,7 @@ export default function AdminPage() {
       {/* Users CRUD */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center mb-4">
             <CardTitle>Gerenciamento de Usuários</CardTitle>
             <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>
               <DialogTrigger asChild>
@@ -255,28 +306,33 @@ export default function AdminPage() {
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="matricula" className="text-right">Matrícula</Label>
-                    <Input id="matricula" value={newUserMatricula} onChange={(e) => setNewUserMatricula(e.target.value)} className="col-span-3" />
+                    <Label htmlFor="add-matricula" className="text-right">Matrícula</Label>
+                    <Input id="add-matricula" value={newUserMatricula} onChange={(e) => setNewUserMatricula(e.target.value)} className="col-span-3" />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="nome" className="text-right">Nome</Label>
-                    <Input id="nome" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="col-span-3" />
+                    <Label htmlFor="add-nome" className="text-right">Nome</Label>
+                    <Input id="add-nome" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="col-span-3" />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="email" className="text-right">Email Real</Label>
-                    <Input id="email" type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} className="col-span-3" />
+                    <Label htmlFor="add-email" className="text-right">Email Real</Label>
+                    <Input id="add-email" type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} className="col-span-3" />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="password" className="text-right">Senha</Label>
-                    <Input id="password" type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} className="col-span-3" />
+                    <Label htmlFor="add-password" className="text-right">Senha</Label>
+                    <Input id="add-password" type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} className="col-span-3" />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="role" className="text-right">Função</Label>
-                     <select id="role" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as USER_ROLES)} className="col-span-3 border border-input rounded-md p-2 bg-background text-foreground">
-                        {Object.values(USER_ROLES).map(role => (
-                          <option key={role} value={role}>{role}</option>
-                        ))}
-                      </select>
+                    <Label htmlFor="add-role" className="text-right">Função</Label>
+                     <Select value={newUserRole} onValueChange={(value) => setNewUserRole(value as UserRole)}>
+                        <SelectTrigger className="col-span-3">
+                          <SelectValue placeholder="Selecione uma função" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.values(USER_ROLES).map(role => (
+                            <SelectItem key={role} value={role}>{role}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                   </div>
                 </div>
                 <DialogFooter>
@@ -284,6 +340,16 @@ export default function AdminPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+          </div>
+           <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Buscar usuários por matrícula ou nome..."
+              value={userSearchTerm}
+              onChange={(e) => setUserSearchTerm(e.target.value)}
+              className="pl-8 w-full"
+            />
           </div>
         </CardHeader>
         <CardContent>
@@ -298,13 +364,13 @@ export default function AdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((user) => (
+                {filteredUsers.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell>{user.matricula}</TableCell>
                     <TableCell>{user.nomeCompleto}</TableCell>
                     <TableCell>{user.role}</TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button variant="ghost" size="icon" onClick={() => handleEditUser(user.id)}>
+                      <Button variant="ghost" size="icon" onClick={() => handleEditUserClick(user)}>
                         <Edit3 className="h-4 w-4" />
                       </Button>
                       <AlertDialog>
@@ -335,6 +401,77 @@ export default function AdminPage() {
         </CardContent>
       </Card>
 
+      {/* Edit User Dialog */}
+      {editingUser && (
+        <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Editar Usuário</DialogTitle>
+              <DialogDescription>
+                Modifique os dados do usuário. A matrícula não pode ser alterada.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-matricula" className="text-right">Matrícula</Label>
+                <Input id="edit-matricula" value={editingUser.matricula} readOnly className="col-span-3 bg-muted/50" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-nomeCompleto" className="text-right">Nome</Label>
+                <Input id="edit-nomeCompleto" value={editUserNomeCompleto} onChange={(e) => setEditUserNomeCompleto(e.target.value)} className="col-span-3" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-actualEmail" className="text-right">Email Real</Label>
+                <Input id="edit-actualEmail" type="email" value={editUserActualEmail} onChange={(e) => setEditUserActualEmail(e.target.value)} className="col-span-3" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-role" className="text-right">Função</Label>
+                <Select value={editUserRole} onValueChange={(value) => setEditUserRole(value as UserRole)}>
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Selecione uma função" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.values(USER_ROLES).map(role => (
+                      <SelectItem key={role} value={role}>{role}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditUserDialogOpen(false)}>Cancelar</Button>
+              <Button type="button" onClick={handleUpdateUser}>Salvar Alterações</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* View Calculator Data Dialog */}
+      {viewingCalcData && viewingCalcDataType && (
+        <Dialog open={isViewCalcDataDialogOpen} onOpenChange={setIsViewCalcDataDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Detalhes - {viewingCalcDataType === "Calc1" ? "Calculadora 1" : "Calculadora 2"}</DialogTitle>
+              <DialogDescription>
+                Dados da sessão para matrícula: {viewingCalcData.matricula} <br/>
+                Última atualização: {viewingCalcData.updatedAt?.toDate().toLocaleString('pt-BR') || 'N/A'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2 py-4 max-h-[60vh] overflow-y-auto">
+              {Object.entries(viewingCalcData.lastSession).map(([key, value]) => (
+                <div key={key} className="grid grid-cols-3 items-center gap-4 text-sm">
+                  <Label htmlFor={`view-${key}`} className="text-right col-span-1 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</Label>
+                  <Input id={`view-${key}`} value={String(value ?? 'N/A')} readOnly className="col-span-2 bg-muted/50" />
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsViewCalcDataDialogOpen(false)}>Fechar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Calculator 1 Data CRUD */}
       <Card>
         <CardHeader>
@@ -356,7 +493,7 @@ export default function AdminPage() {
                     <TableCell>{data.matricula}</TableCell>
                     <TableCell>{data.updatedAt?.toDate().toLocaleString('pt-BR') || 'N/A'}</TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button variant="ghost" size="icon" onClick={() => handleViewCalcDetails(data.id, "Calc1")}>
+                      <Button variant="ghost" size="icon" onClick={() => handleViewCalcDetailsClick(data, "Calc1")}>
                         <Eye className="h-4 w-4" />
                       </Button>
                        <AlertDialog>
@@ -408,7 +545,7 @@ export default function AdminPage() {
                     <TableCell>{data.matricula}</TableCell>
                     <TableCell>{data.updatedAt?.toDate().toLocaleString('pt-BR') || 'N/A'}</TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button variant="ghost" size="icon" onClick={() => handleViewCalcDetails(data.id, "Calc2")}>
+                      <Button variant="ghost" size="icon" onClick={() => handleViewCalcDetailsClick(data, "Calc2")}>
                         <Eye className="h-4 w-4" />
                       </Button>
                       <AlertDialog>
@@ -443,23 +580,34 @@ export default function AdminPage() {
             <h3 className="text-xl font-semibold text-destructive/80 mb-2">Notas Importantes do Admin:</h3>
             <ul className="list-disc list-inside text-sm text-destructive/70 space-y-1">
               <li>A exclusão de usuários aqui remove apenas o registro do Firestore, não a conta de Autenticação Firebase. A exclusão completa de usuários requer SDK Admin do Firebase.</li>
+              <li>A alteração de matrícula (e, por consequência, o email de autenticação do Firebase) e senha não são cobertas pela funcionalidade de "Editar Usuário" atual.</li>
               <li>Para que as operações de Leitura (de todos os dados) e Exclusão/Edição funcionem corretamente, suas <strong>Regras de Segurança do Firestore</strong> precisam permitir essas ações para o perfil de administrador.
                 Exemplo de regra para `users` (similar para `calculator1Data` e `calculator2Data`):
                 <pre className="mt-1 p-2 bg-black/10 rounded text-xs overflow-x-auto">{`
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Rule for 'users'
     match /users/{userId} {
-      // Admins can read/write any user document
-      // Users can read/write their own document
       allow read, write: if request.auth != null && 
-                          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}' || request.auth.uid == userId);
+                          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}' || 
+                           request.auth.uid == userId);
     }
-    // ... (regras para calculator1Data, calculator2Data com lógica similar)
+    // Rule for 'calculator1Data'
+    match /calculator1Data/{docId} {
+      allow read, write: if request.auth != null &&
+                          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}' ||
+                           request.auth.uid == docId);
+    }
+    // Rule for 'calculator2Data'
+    match /calculator2Data/{docId} {
+      allow read, write: if request.auth != null &&
+                          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '${USER_ROLES.ADMIN}' ||
+                           request.auth.uid == docId);
+    }
   }
 }`}
                 </pre>
               </li>
-               <li>As funcionalidades de "Editar Usuário" e "Ver Detalhes (Calculadora)" são placeholders. A implementação completa exigirá modais ou páginas de edição dedicadas.</li>
             </ul>
         </div>
       </CardFooter>
