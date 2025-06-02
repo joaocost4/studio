@@ -15,15 +15,33 @@ import {
   BarChart3,
   PackagePlus,
   Users, 
-  Briefcase 
+  Briefcase,
+  UserPlus // Added UserPlus
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
+import React, { useState } from "react"; // Added useState
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ManagementPage() {
   const { userProfile } = useAuth();
   useRequireAuth({ allowedRoles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] });
   const router = useRouter(); 
+  const { toast } = useToast();
+
+  const [isAddStudentToTurmaDialogOpen, setIsAddStudentToTurmaDialogOpen] = useState(false);
+  const [studentMatriculaToAdd, setStudentMatriculaToAdd] = useState("");
 
   if (!userProfile || !(userProfile.role === USER_ROLES.ADMIN || userProfile.role === USER_ROLES.REPRESENTATIVE)) {
      return (
@@ -35,20 +53,33 @@ export default function ManagementPage() {
     );
   }
   
-  const handleManagementAction = (action: string) => {
+  const handleManagementAction = (action: string, details?: any) => {
     if (action === "Gerir Turmas") {
-      router.push('/admin/turmas'); // Navigate to the new turmas management page
-    } else {
+      router.push('/admin/turmas');
+    } else if (action === "Adicionar Aluno à Turma") {
+      // Here you would implement the actual logic to add the student.
+      // For now, it's a simulation.
+      toast({
+        title: "Ação Simulada",
+        description: `Aluno com matrícula "${details.matricula}" seria adicionado à turma "${userProfile?.turmaNome}".`,
+      });
+      setIsAddStudentToTurmaDialogOpen(false);
+      setStudentMatriculaToAdd("");
+    }
+     else {
       alert(`Ação de gestão "${action}" executada! (Simulação)`);
     }
   };
 
   const isAdmin = userProfile.role === USER_ROLES.ADMIN;
+  const isRepresentative = userProfile.role === USER_ROLES.REPRESENTATIVE;
   const PageIconComponent = isAdmin ? Briefcase : ClipboardSignature; 
   const pageTitle = isAdmin ? "Página de Gestão Avançada" : "Painel do Representante de Turma";
   const pageDescription = isAdmin 
     ? "Ferramentas administrativas e de gestão de representantes."
     : "Ferramentas e recursos para auxiliar na gestão da turma de Medicina.";
+
+  const canAddStudentToTurma = isRepresentative && userProfile?.turmaId && userProfile?.turmaNome;
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -88,6 +119,56 @@ export default function ManagementPage() {
              <Button variant="default" onClick={() => handleManagementAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
               <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
             </Button>
+
+            {/* Botão Adicionar Aluno à Turma para Representantes */}
+            {canAddStudentToTurma && (
+              <Dialog open={isAddStudentToTurmaDialogOpen} onOpenChange={(isOpen) => {
+                setIsAddStudentToTurmaDialogOpen(isOpen);
+                if (!isOpen) setStudentMatriculaToAdd(""); // Limpa o campo ao fechar
+              }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="w-full text-accent-foreground border-accent hover:bg-accent/10">
+                    <UserPlus className="mr-2 h-5 w-5 text-accent" /> Adicionar Aluno à Turma
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Adicionar Aluno à Turma</DialogTitle>
+                    <DialogDescription>
+                      Insira a matrícula do aluno que deseja adicionar à sua turma: <strong className="text-primary">{userProfile?.turmaNome}</strong>.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="student-matricula" className="text-right">
+                        Matrícula
+                      </Label>
+                      <Input
+                        id="student-matricula"
+                        value={studentMatriculaToAdd}
+                        onChange={(e) => setStudentMatriculaToAdd(e.target.value)}
+                        className="col-span-3"
+                        placeholder="Matrícula do Aluno"
+                      />
+                    </div>
+                     <p className="text-sm text-muted-foreground col-span-4">
+                        Você está adicionando à turma: <span className="font-semibold text-foreground">{userProfile?.turmaNome}</span>.
+                        Esta ação é uma simulação e necessita implementação do backend.
+                    </p>
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsAddStudentToTurmaDialogOpen(false)}>Cancelar</Button>
+                    <Button 
+                      type="button" 
+                      onClick={() => handleManagementAction("Adicionar Aluno à Turma", { matricula: studentMatriculaToAdd })}
+                      disabled={!studentMatriculaToAdd.trim()}
+                    >
+                      Adicionar Aluno (Simulação)
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
 
            {isAdmin && (
@@ -110,6 +191,7 @@ export default function ManagementPage() {
               <li>As funcionalidades apresentadas são simulações. O desenvolvimento completo é necessário para torná-las operacionais.</li>
               <li>Considere integrar com sistemas acadêmicos reais para lançamento de notas e listas de chamada.</li>
               <li>A gestão de comunicados pode envolver notificações por email ou dentro da plataforma.</li>
+              <li>A funcionalidade "Adicionar Aluno à Turma" atualmente simula a ação. Seria necessário integrar com o Firestore para atualizar o `turmaId` do aluno especificado.</li>
             </ul>
           </div>
         </CardContent>
@@ -117,5 +199,3 @@ export default function ManagementPage() {
     </div>
   );
 }
-
-    

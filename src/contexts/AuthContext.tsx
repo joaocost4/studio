@@ -17,8 +17,9 @@ export interface UserProfile { // Exporting for use in other components
   matricula: string;
   nomeCompleto: string; 
   role: UserRole;
-  turmaId?: string; // Added turmaId
-  actualEmail?: string; // actualEmail if different from auth email
+  turmaId?: string;
+  turmaNome?: string; // Added turmaNome
+  actualEmail?: string;
 }
 
 interface AuthContextType {
@@ -27,7 +28,7 @@ interface AuthContextType {
   loading: boolean;
   isMatriculaVerified: boolean; 
   logout: () => Promise<void>;
-  refreshUserProfile: () => Promise<void>; // Function to refresh profile
+  refreshUserProfile: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,31 +44,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userDocRef = doc(db, 'users', user.uid);
       const userDocSnap = await getDoc(userDocRef);
+      
+      let profileData: Omit<UserProfile, 'uid' | 'email'> = {
+        matricula: user.email?.split('@')[0] || 'N/A',
+        nomeCompleto: user.email?.split('@')[0] || 'N/A',
+        role: USER_ROLES.USER,
+        turmaId: undefined,
+        turmaNome: undefined,
+        actualEmail: user.email || undefined,
+      };
+
       if (userDocSnap.exists()) {
         const data = userDocSnap.data();
-        setUserProfile({
-          uid: user.uid,
-          email: data.actualEmail || user.email, // Use actualEmail if available
+        profileData = {
           matricula: data.matricula,
           nomeCompleto: data.nomeCompleto || data.matricula,
           role: data.role || USER_ROLES.USER,
-          turmaId: data.turmaId, // Include turmaId
+          turmaId: data.turmaId,
           actualEmail: data.actualEmail,
-        });
-      } else {
-        const extractedMatricula = user.email?.split('@')[0] || 'N/A';
-        setUserProfile({
-          uid: user.uid,
-          email: user.email,
-          matricula: extractedMatricula,
-          nomeCompleto: extractedMatricula,
-          role: USER_ROLES.USER,
-          turmaId: undefined,
-        });
+          turmaNome: undefined, // Initialize, will be fetched next
+        };
+
+        if (data.turmaId) {
+          try {
+            const turmaDocRef = doc(db, 'turmas', data.turmaId);
+            const turmaDocSnap = await getDoc(turmaDocRef);
+            if (turmaDocSnap.exists()) {
+              profileData.turmaNome = turmaDocSnap.data()?.nome;
+            }
+          } catch (turmaError) {
+            console.error("Error fetching turma name:", turmaError);
+            // turmaNome remains undefined
+          }
+        }
       }
+      
+      setUserProfile({
+        uid: user.uid,
+        email: profileData.actualEmail || user.email,
+        ...profileData,
+      });
+
     } catch (error) {
       console.error("Error fetching user profile:", error);
-      setUserProfile(null); // Clear profile on error
+      setUserProfile(null);
     }
   }, []);
 
