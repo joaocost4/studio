@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Home, Users, ShieldCheck, LogOut, Apple, Calculator, ChevronDown, ChevronRight, Utensils, BookMarked } from "lucide-react";
+import { Home, Users, ShieldCheck, LogOut, Apple, Calculator, ChevronDown, ChevronRight, Utensils, BookMarked, Cookie } from "lucide-react"; // Added Cookie
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { USER_ROLES } from "@/lib/constants";
@@ -50,6 +50,7 @@ export function AppSidebar() {
       ],
     },
     { href: "/my-grades", label: "Minhas Notas", icon: BookMarked },
+    { href: "/recipes", label: "Receitas", icon: Cookie }, // Added Recipes link
     { href: "/cardapio", label: "Cardápio RU", icon: Utensils },
     { href: "/management", label: "Gestão", icon: Users, roles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] },
     { href: "/admin", label: "Testes Admin", icon: ShieldCheck, roles: [USER_ROLES.ADMIN] },
@@ -100,7 +101,7 @@ export function AppSidebar() {
     if (!href) return false;
     // For dashboard, exact match. For others, startsWith.
     // For "/my-grades", also prefer exact match or specific logic if it's a parent later.
-    if (href === "/dashboard" || href === "/my-grades") return pathname === href;
+    if (href === "/dashboard" || href === "/my-grades" || href === "/recipes") return pathname === href;
     return pathname.startsWith(href);
   };
 
@@ -222,4 +223,3 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
-
