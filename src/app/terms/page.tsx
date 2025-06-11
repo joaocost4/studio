@@ -1,9 +1,20 @@
+
+"use client"; // Added "use client" directive
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { useState, useEffect } from "react"; // Imported useState and useEffect
 
 export default function TermsPage() {
+  const [lastUpdated, setLastUpdated] = useState(""); // State for the date
+
+  useEffect(() => {
+    // Set the date string only on the client side after mount
+    setLastUpdated(new Date().toLocaleDateString('pt-BR'));
+  }, []); // Empty dependency array ensures this runs once on mount
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 sm:p-6 md:p-8">
       <Card className="w-full max-w-2xl shadow-xl border-2 border-primary/20 rounded-xl">
@@ -53,7 +64,7 @@ export default function TermsPage() {
             </p>
           </section>
           <p className="text-sm text-muted-foreground pt-4">
-            Última atualização: {new Date().toLocaleDateString('pt-BR')}
+            Última atualização: {lastUpdated || "Carregando..."} {/* Display state or loading text */}
           </p>
           <div className="pt-6 text-center">
             <Button asChild variant="outline">
