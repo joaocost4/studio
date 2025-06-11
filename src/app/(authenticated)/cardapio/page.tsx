@@ -61,17 +61,20 @@ async function getCardapioData(): Promise<DailyMenu[] | null> {
 
     const uruguaianaMenu: DailyMenu[] = [];
     
-    const uruguaianaHeaderString = "<h2>Uruguaiana</h2>";
-    const uruguaianaIndex = html.indexOf(uruguaianaHeaderString);
+    const uruguaianaHeaderRegex = /<h2[^>]*>\s*Uruguaiana\s*<\/h2>/i;
+    const headerMatch = html.match(uruguaianaHeaderRegex);
 
-    if (uruguaianaIndex === -1) {
-      console.error("[CardapioPage - getCardapioData] Seção 'Uruguaiana' não encontrada no HTML.", `URL: ${targetUrl}`);
+    if (!headerMatch || headerMatch.index === undefined) {
+      console.error("[CardapioPage - getCardapioData] Seção 'Uruguaiana' (com <h2>) não encontrada no HTML.", `URL: ${targetUrl}`);
+      // console.error("HTML Snippet (first 1000 chars):", html.substring(0, 1000)); // For debugging
       return null;
     }
+    
+    const uruguaianaSectionStartIndex = headerMatch.index;
 
-    const tableStartIndex = html.indexOf("<table", uruguaianaIndex);
+    const tableStartIndex = html.indexOf("<table", uruguaianaSectionStartIndex);
     if (tableStartIndex === -1) {
-      console.error("[CardapioPage - getCardapioData] Tabela de Uruguaiana não encontrada no HTML.", `URL: ${targetUrl}`);
+      console.error("[CardapioPage - getCardapioData] Tabela de Uruguaiana não encontrada no HTML após o cabeçalho.", `URL: ${targetUrl}`);
       return null;
     }
 
@@ -152,9 +155,8 @@ async function getCardapioData(): Promise<DailyMenu[] | null> {
       `[CardapioPage - getCardapioData] Falha ao buscar ou processar o cardápio. URL: ${targetUrl}`,
       `ErrorType: ${error?.constructor?.name}`,
       `Message: ${error?.message}`,
-      `Cause: ${error?.cause ?? 'N/A'}`,
-      // Descomente a linha abaixo para logar o objeto de erro completo em desenvolvimento, se necessário
-      // error 
+      `Cause: ${String(error?.cause) ?? 'N/A'}`,
+      // error // Uncomment for full error object logging in development
     );
     return null;
   }
