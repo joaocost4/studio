@@ -35,7 +35,7 @@ function parseTd(tdHtml: string): { text: string; rowspan: number } {
 }
 
 async function getCardapioData(): Promise<DailyMenu[] | null> {
-  const targetUrl = 'https://guri.unipampa.edu.ru/run/publico/';
+  const targetUrl = 'https://guri.unipampa.edu.br/run/publico/listar';
   try {
     const response = await fetch(targetUrl, {
       headers: {
@@ -264,7 +264,7 @@ export default async function CardapioPage() {
         ))}
       </div>
       <p className="text-center text-xs text-muted-foreground mt-8">
-        Informações extraídas de <a href="https://guri.unipampa.edu.ru/run/publico/" target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">guri.unipampa.edu.ru/run/publico/</a>.
+        Informações extraídas de <a href="https://guri.unipampa.edu.br/run/publico/listar" target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">guri.unipampa.edu.br/run/publico/listar</a>.
         A exatidão e disponibilidade dependem da fonte original.
       </p>
     </div>
