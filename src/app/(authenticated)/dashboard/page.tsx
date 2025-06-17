@@ -4,7 +4,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StrawberryIcon } from "@/components/icons/StrawberryIcon";
-import { ArrowRight, Calculator } from "lucide-react";
+import { ArrowRight, Calculator, Lightbulb } from "lucide-react"; // Added Lightbulb
 import Link from "next/link";
 import Image from "next/image";
 
@@ -13,7 +13,7 @@ export default function DashboardPage() {
     title: "Calculadora Moranguinho",
     description: "Acesse suas calculadoras temáticas!",
     icon: StrawberryIcon,
-    imageSrc: "https://placehold.co/600x300/E95E8E/FFF0F5.png", // Placeholder for the new image
+    imageSrc: "https://placehold.co/600x300/E95E8E/FFF0F5.png",
     imageAlt: "Calculadora Moranguinho",
     imageAiHint: "strawberry calculator",
     buttons: [
@@ -39,9 +39,9 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="flex justify-center">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
         <Card 
-          className="shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-xl overflow-hidden border-2 border-primary/10 animate-slide-in w-full max-w-lg"
+          className="shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-xl overflow-hidden border-2 border-primary/10 animate-slide-in w-full"
         >
           <CardHeader className="bg-gradient-to-br from-primary/10 to-background p-0">
             <Image
@@ -72,6 +72,25 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+
+        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-xl border-2 border-primary/10 animate-slide-in w-full">
+            <CardHeader>
+                <div className="flex items-center mb-1">
+                    <Lightbulb className="h-10 w-10 text-primary mr-4" />
+                    <CardTitle className="text-2xl font-headline text-primary/90">Entendendo a IA</CardTitle>
+                </div>
+            </CardHeader>
+            <CardContent className="p-6">
+                <CardDescription className="text-foreground/80 mb-6 min-h-[40px]">
+                    Descubra como a Inteligência Artificial (Genkit) é utilizada neste projeto para facilitar tarefas como processamento de notas e geração de documentos.
+                </CardDescription>
+                <Button asChild className="w-full bg-primary/80 hover:bg-primary/70 text-primary-foreground transition-transform hover:scale-105">
+                    <Link href="/how-ai-works">
+                        Saiba Mais sobre a IA <ArrowRight className="ml-2 h-5 w-5" />
+                    </Link>
+                </Button>
+            </CardContent>
+        </Card>
       </div>
         <style jsx global>{`
         @keyframes fade-in-down {
@@ -88,7 +107,7 @@ export default function DashboardPage() {
         }
         .animate-fade-in-down { animation: fade-in-down 0.5s ease-out forwards; }
         .animate-fade-in-up { animation: fade-in-up 0.5s ease-out 0.2s forwards; }
-        .animate-slide-in { animation: slide-in 0.5s ease-out forwards; }
+        .animate-slide-in { animation: slide-in 0.5s ease-out 0.3s forwards; }
       `}</style>
     </div>
   );
