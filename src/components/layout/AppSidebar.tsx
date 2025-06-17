@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Home, Users, ShieldCheck, LogOut, Apple, Calculator, ChevronDown, ChevronRight, Utensils, BookMarked, Cookie } from "lucide-react"; // Added Cookie
+import { Home, Users, ShieldCheck, LogOut, Apple, Calculator, ChevronDown, ChevronRight, BookMarked, Cookie } from "lucide-react"; // Removed Utensils
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { USER_ROLES } from "@/lib/constants";
@@ -50,8 +50,8 @@ export function AppSidebar() {
       ],
     },
     { href: "/my-grades", label: "Minhas Notas", icon: BookMarked },
-    { href: "/recipes", label: "Receitas", icon: Cookie }, // Added Recipes link
-    { href: "/cardapio", label: "Cardápio RU", icon: Utensils },
+    { href: "/recipes", label: "Receitas", icon: Cookie },
+    // { href: "/cardapio", label: "Cardápio RU", icon: Utensils }, // Removed Cardápio RU link
     { href: "/management", label: "Gestão", icon: Users, roles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] },
     { href: "/admin", label: "Testes Admin", icon: ShieldCheck, roles: [USER_ROLES.ADMIN] },
   ];
