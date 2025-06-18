@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Home, Users, ShieldCheck, LogOut, Apple, Calculator, ChevronDown, ChevronRight, BookMarked, Cookie } from "lucide-react"; // Removed Utensils
+import { Home, Users, ShieldCheck, LogOut, Apple, Calculator, ChevronDown, ChevronRight, BookMarked, Cookie, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { USER_ROLES } from "@/lib/constants";
@@ -51,7 +51,7 @@ export function AppSidebar() {
     },
     { href: "/my-grades", label: "Minhas Notas", icon: BookMarked },
     { href: "/recipes", label: "Receitas", icon: Cookie },
-    // { href: "/cardapio", label: "Cardápio RU", icon: Utensils }, // Removed Cardápio RU link
+    { href: "/mural", label: "Mural", icon: ClipboardList },
     { href: "/management", label: "Gestão", icon: Users, roles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] },
     { href: "/admin", label: "Testes Admin", icon: ShieldCheck, roles: [USER_ROLES.ADMIN] },
   ];
@@ -60,14 +60,12 @@ export function AppSidebar() {
     const initialSubmenusState: Record<string, boolean> = {};
     navItems.forEach(item => {
       if (item.subItems && item.defaultOpen) {
-        // Open submenu if it contains the current active path or if defaultOpen is true
         const isActiveParent = item.subItems.some(sub => sub.href && pathname.startsWith(sub.href));
         if (isActiveParent || item.defaultOpen) {
              initialSubmenusState[item.label] = true;
         }
       }
     });
-    // If current page is a subitem, make sure its parent submenu is open
     navItems.forEach(item => {
         if(item.subItems) {
             item.subItems.forEach(subItem => {
@@ -78,7 +76,7 @@ export function AppSidebar() {
         }
     });
     setOpenSubmenus(initialSubmenusState);
-  }, [pathname]); // Added pathname to dependencies to re-evaluate on route change
+  }, [pathname]);
 
 
   const getInitials = (fullName?: string | null, matricula?: string | null) => {
@@ -99,9 +97,7 @@ export function AppSidebar() {
 
   const isActive = (href: string) => {
     if (!href) return false;
-    // For dashboard, exact match. For others, startsWith.
-    // For "/my-grades", also prefer exact match or specific logic if it's a parent later.
-    if (href === "/dashboard" || href === "/my-grades" || href === "/recipes") return pathname === href;
+    if (href === "/dashboard" || href === "/my-grades" || href === "/recipes" || href === "/mural") return pathname === href;
     return pathname.startsWith(href);
   };
 
@@ -111,9 +107,9 @@ export function AppSidebar() {
 
   const renderNavItems = (items: NavItem[]) => {
     return items.filter(item => {
-      if (loading && !userProfile) return false; // Don't render if loading and no profile yet
-      if (!item.roles) return true; // No specific roles required, show to all
-      return userProfile && item.roles.includes(userProfile.role); // User has one of the allowed roles
+      if (loading && !userProfile) return false; 
+      if (!item.roles) return true; 
+      return userProfile && item.roles.includes(userProfile.role); 
     }).map((item) => {
       if (item.subItems) {
         const isParentActive = item.subItems.some(sub => sub.href && isActive(sub.href));
@@ -121,7 +117,6 @@ export function AppSidebar() {
           <SidebarMenuItem key={item.label}>
             <SidebarMenuButton
               onClick={() => toggleSubmenu(item.label)}
-              // @ts-ignore
               variant={isParentActive ? "secondary" : "ghost"}
               className="font-medium w-full justify-between"
               isActive={isParentActive}
@@ -138,7 +133,6 @@ export function AppSidebar() {
                   <SidebarMenuSubItem key={subItem.label}>
                     <SidebarMenuSubButton
                       asChild
-                      // @ts-ignore
                       variant={subItem.href && isActive(subItem.href) ? "secondary" : "ghost"}
                       className="font-medium"
                       isActive={subItem.href && isActive(subItem.href)}
@@ -161,7 +155,6 @@ export function AppSidebar() {
             asChild
             className="font-medium"
             isActive={item.href && isActive(item.href)}
-            // @ts-ignore
             variant={item.href && isActive(item.href) ? "secondary" : "ghost"}
           >
             <Link href={item.href!}>
