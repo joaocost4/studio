@@ -1,6 +1,7 @@
+
 import { CalculatorWrapper } from "@/components/calculators/CalculatorWrapper";
 import { Calculator1Form } from "@/components/calculators/Calculator1Form";
-import { StrawberryIcon } from "@/components/icons/StrawberryIcon"; // Placeholder
+import StrawberryIcon from "@/components/icons/StrawberryIcon"; // Corrected default import
 
 export default function Calculator1Page() {
   return (
