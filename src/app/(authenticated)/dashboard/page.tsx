@@ -3,7 +3,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { StrawberryIcon } from "@/components/icons/StrawberryIcon";
+import StrawberryIcon from "@/components/icons/StrawberryIcon"; // Corrected import
 import { ArrowRight, Lightbulb, GraduationCap, ClipboardList, Megaphone, Info } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -50,7 +50,7 @@ export default function DashboardPage() {
       imageAlt: "Ilustração sobre Inteligência Artificial",
       imageAiHint: "artificial intelligence brain",
       links: [{ label: "Saiba Mais sobre a IA", href: "/how-ai-works" }],
-      roles: [USER_ROLES.USER] 
+      roles: [USER_ROLES.USER]
     },
     {
       id: "mural",
@@ -66,7 +66,7 @@ export default function DashboardPage() {
 
   const filteredRegularCards = regularCards.filter(card => {
     if (!card.roles) return true;
-    if (!userProfile) return false;
+    if (!userProfile) return false; // Should not happen if page is auth-protected
     return card.roles.includes(userProfile.role);
   });
 
@@ -198,3 +198,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

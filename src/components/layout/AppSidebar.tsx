@@ -20,7 +20,7 @@ import { Home, Users, ShieldCheck, LogOut, Apple, Calculator, ChevronDown, Chevr
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { USER_ROLES } from "@/lib/constants";
-import { StrawberryIcon } from "../icons/StrawberryIcon";
+import StrawberryIcon from "../icons/StrawberryIcon"; // Corrected import
 import { usePathname } from "next/navigation";
 import React, { useState, useEffect } from "react";
 
