@@ -1,37 +1,57 @@
+
 import React from 'react';
 
-const StrawberryIcon: React.FC<{ size?: number }> = ({ size = 100 }) => {
+const StrawberryIcon: React.FC<{ className?: string, size?: number, width?: number, height?: number }> = ({ className, size, width, height }) => {
+  const iconSize = size || 50; // Default size if only 'size' is provided
+  const iconWidth = width || iconSize;
+  const iconHeight = height || iconSize;
+
   return (
     <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      fill="none"
+      width={iconWidth}
+      height={iconHeight}
+      viewBox="0 0 64 64" // Adjusted viewBox for better detail
       xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-label="Strawberry Icon"
     >
-      <rect width="100" height="100" rx="20" fill="#FADADD" />
+      {/* Strawberry Body */}
       <path
-        d="M50 15C45 10 40 12 38 18C35 15 30 15 28 20C26 25 28 30 32 34C36 38 44 40 50 35C56 40 64 38 68 34C72 30 74 25 72 20C70 15 65 15 62 18C60 12 55 10 50 15Z"
-        fill="#76A36F"
-        stroke="#4E4E4E"
-        strokeWidth="2"
+        d="M32 60C18 60 10 48 10 36C10 24 20 10 32 10C44 10 54 24 54 36C54 48 46 60 32 60Z"
+        fill="#E30B5D" // Raspberry Pink (Primary Theme Color)
+      />
+      {/* Seeds - subtle dots */}
+      <circle cx="26" cy="30" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+      <circle cx="38" cy="30" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+      <circle cx="22" cy="38" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+      <circle cx="32" cy="38" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+      <circle cx="42" cy="38" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+      <circle cx="28" cy="46" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+      <circle cx="36" cy="46" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+      <circle cx="32" cy="25" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+       <circle cx="29" cy="52" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+      <circle cx="35" cy="52" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
+
+
+      {/* Leaves (Sepals) */}
+      <path
+        d="M32 4C28 10 22 12 20 18C20 18 32 16 32 4Z"
+        fill="#D0FF14" // Lime Green (Accent Theme Color)
       />
       <path
-        d="M50 30C40 30 25 45 35 65C45 85 55 85 65 65C75 45 60 30 50 30Z"
-        fill="#F48FB1"
-        stroke="#4E4E4E"
-        strokeWidth="2"
+        d="M32 4C36 10 42 12 44 18C44 18 32 16 32 4Z"
+        fill="#D0FF14" // Lime Green
       />
-      {[...Array(7)].map((_, i) => (
-        <ellipse
-          key={i}
-          cx={35 + (i % 3) * 10}
-          cy={45 + Math.floor(i / 3) * 10}
-          rx="2"
-          ry="4"
-          fill="#FFFFFF"
-        />
-      ))}
+      <path
+        d="M24 12C20 18 22 22 28 22C28 22 24 18 24 12Z"
+        fill="#D0FF14" // Lime Green
+      />
+      <path
+        d="M40 12C44 18 42 22 36 22C36 22 40 18 40 12Z"
+        fill="#D0FF14" // Lime Green
+      />
+       {/* Stem */}
+      <rect x="30.5" y="0" width="3" height="6" fill="#A07855" rx="1"/>
     </svg>
   );
 };
