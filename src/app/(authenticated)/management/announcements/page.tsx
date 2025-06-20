@@ -84,9 +84,6 @@ export default function GerenciarComunicadosPage() {
           collection(db, "comunicados"),
           where("createdByUid", "==", userProfile.uid),
           orderBy("createdAt", "desc")
-          // Further filtering by targetTurmaId == userProfile.turmaId could be done client-side
-          // or by adding a composite index if strictly needed for all representative queries.
-          // For simplicity, allowing reps to see all they created, and client-side handles display logic.
         );
       } else {
         setComunicadosList([]);
@@ -101,8 +98,8 @@ export default function GerenciarComunicadosPage() {
           id: doc.id,
           ...data,
           targetTurmaName: mapTurmaIdToName(data.targetTurmaId),
-          createdAt: data.createdAt, // Keep as Timestamp for sorting
-          expiryDate: data.expiryDate, // Keep as Timestamp
+          createdAt: data.createdAt, 
+          expiryDate: data.expiryDate, 
         } as FullComunicadoData;
       });
       
@@ -142,7 +139,7 @@ export default function GerenciarComunicadosPage() {
   const handleOpenCreateDialog = () => {
     resetFormFields();
     if (isRepresentative && userProfile?.turmaId) {
-      setFormTargetTurmaId(userProfile.turmaId); // Pre-select for representative
+      setFormTargetTurmaId(userProfile.turmaId); 
     }
     setIsFormDialogOpen(true);
   };
@@ -186,20 +183,19 @@ export default function GerenciarComunicadosPage() {
         expiryDate: Timestamp.fromDate(formExpiryDate),
         targetTurmaId: finalTargetTurmaId,
         createdByUid: userProfile.uid,
-        // createdAt and updatedAt will be handled by serverTimestamp
       };
 
-      if (currentComunicado) { // Update
+      if (currentComunicado) { 
         const docRef = doc(db, "comunicados", currentComunicado.id);
         await updateDoc(docRef, { ...comunicadoData, updatedAt: serverTimestamp() });
         toast({ title: "Comunicado Atualizado!" });
-      } else { // Create
+      } else { 
         await addDoc(collection(db, "comunicados"), { ...comunicadoData, createdAt: serverTimestamp() });
         toast({ title: "Comunicado Criado!" });
       }
       setIsFormDialogOpen(false);
       resetFormFields();
-      fetchComunicados(); // Refresh list
+      fetchComunicados(); 
     } catch (error: any) {
       console.error("Error saving comunicado: ", error);
       toast({ title: "Erro ao salvar comunicado", description: error.message, variant: "destructive" });
@@ -216,7 +212,7 @@ export default function GerenciarComunicadosPage() {
       toast({ title: "Comunicado Excluído!" });
       setIsDeleteDialogOpen(false);
       setCurrentComunicado(null);
-      fetchComunicados(); // Refresh list
+      fetchComunicados(); 
     } catch (error: any) {
       console.error("Error deleting comunicado: ", error);
       toast({ title: "Erro ao excluir comunicado", description: error.message, variant: "destructive" });
@@ -283,9 +279,9 @@ export default function GerenciarComunicadosPage() {
                     <TableRow key={comunicado.id}>
                       <TableCell className="font-medium max-w-xs truncate" title={comunicado.title}>{comunicado.title}</TableCell>
                       <TableCell>{comunicado.targetTurmaName}</TableCell>
-                      <TableCell>{format(comunicado.expiryDate.toDate(), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
-                      <TableCell>{format(comunicado.createdAt.toDate(), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
-                      <TableCell className="text-right space-x-2">
+                      <TableCell className="whitespace-nowrap">{format(comunicado.expiryDate.toDate(), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
+                      <TableCell className="whitespace-nowrap">{format(comunicado.createdAt.toDate(), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
+                      <TableCell className="text-right space-x-1 sm:space-x-2">
                         {canManageComunicado(comunicado) && (
                           <>
                             <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(comunicado)} title="Editar">
@@ -356,7 +352,6 @@ export default function GerenciarComunicadosPage() {
                     locale={ptBR}
                     disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
                   />
-                  {/* Basic time selection could be added here if needed */}
                    <Input 
                       type="time" 
                       className="mt-2"
