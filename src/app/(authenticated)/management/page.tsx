@@ -329,9 +329,9 @@ export default function ManagementPage() {
         toast({ title: "Nome da prova obrigatório", description: "Por favor, insira o nome da prova.", variant: "destructive"});
         return;
     }
-    const pesoNum = parseFloat(newProvaPeso);
-    if (isNaN(pesoNum) || pesoNum <= 0 || pesoNum > 10) { 
-        toast({ title: "Peso inválido", description: "O peso deve ser um número entre 0.01 e 10.", variant: "destructive"});
+    const pesoPercent = parseFloat(newProvaPeso);
+    if (isNaN(pesoPercent) || pesoPercent <= 0 || pesoPercent > 100) { 
+        toast({ title: "Peso inválido", description: "O peso deve ser um número entre 0.01 e 100 (representando porcentagem).", variant: "destructive"});
         return;
     }
      if (!newProvaData || !newProvaData.trim()) { 
@@ -369,7 +369,7 @@ export default function ManagementPage() {
             turmaId: targetTurmaId,
             disciplinaId: selectedDisciplinaIdForProva,
             nome: newProvaNome.trim(),
-            peso: pesoNum,
+            peso: pesoPercent / 100, // Convert percentage to decimal for storage
             data: Timestamp.fromDate(parsedDate), 
             createdAt: serverTimestamp() as Timestamp,
         };
@@ -763,20 +763,20 @@ export default function ManagementPage() {
                             />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="prova-peso" className="text-right">Peso</Label>
+                            <Label htmlFor="prova-peso" className="text-right">Peso (%)</Label>
                             <Input 
                                 id="prova-peso" 
                                 type="number"
                                 value={newProvaPeso} 
                                 onChange={(e) => setNewProvaPeso(e.target.value)} 
                                 className="col-span-3"
-                                placeholder="Ex: 1.0 ou 0.7"
-                                step="0.01"
+                                placeholder="Ex: 20 (para 20%)"
+                                step="1"
                             />
                         </div>
                          <div className="grid grid-cols-4 items-center gap-4">
                              <span className="text-right text-xs text-muted-foreground col-start-2 col-span-3">
-                                Se um aluno tirar 10 nessa avaliação, quanto ele garante na nota final, por exemplo histologia garante 1 ponto, ou 10%.
+                                Insira o valor percentual do peso (ex: 10 para 10%).
                             </span>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
@@ -840,7 +840,7 @@ export default function ManagementPage() {
               <li>As funcionalidades de "Calendário Acadêmico" etc., ainda são simulações.</li>
               <li>A funcionalidade "Adicionar Aluno à Turma" interage com o Firestore.</li>
               <li>A funcionalidade "Cadastrar Disciplina" salva os dados no Firestore.</li>
-              <li>A funcionalidade "Cadastrar Prova" salva os dados no Firestore.</li>
+              <li>A funcionalidade "Cadastrar Prova" salva os dados no Firestore. O peso agora é inserido como porcentagem.</li>
               <li>A página "Lançar Notas da Turma" (/management/grades) utiliza IA (Genkit) para processamento.</li>
               <li>Certifique-se de que as regras de segurança do Firestore permitem as operações nas coleções 'users', 'turmas', 'disciplinas', 'provas', 'studentGrades' e 'comunicados'.</li>
             </ul>

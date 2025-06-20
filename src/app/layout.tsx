@@ -31,6 +31,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#FAD2E1", // Soft Light Pink
+  initialScale: 1.0,
+  maximumScale: 1.0,
+  userScalable: false, // or 'no'
 };
 
 export default function RootLayout({
@@ -54,3 +57,4 @@ export default function RootLayout({
     </html>
   );
 }
+
