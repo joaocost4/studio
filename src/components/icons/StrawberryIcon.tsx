@@ -1,3 +1,4 @@
+"use client";
 
 import React from 'react';
 
@@ -10,48 +11,38 @@ const StrawberryIcon: React.FC<{ className?: string, size?: number, width?: numb
     <svg
       width={iconWidth}
       height={iconHeight}
-      viewBox="0 0 64 64" // Adjusted viewBox for better detail
+      viewBox="0 0 64 64"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-label="Strawberry Icon"
     >
       {/* Strawberry Body */}
-      <path
-        d="M32 60C18 60 10 48 10 36C10 24 20 10 32 10C44 10 54 24 54 36C54 48 46 60 32 60Z"
-        fill="#E30B5D" // Raspberry Pink (Primary Theme Color)
+      <path 
+        d="M32 58C18 58 8 45 8 34C8 23 18 10 32 10C46 10 56 23 56 34C56 45 46 58 32 58Z" 
+        fill="#E30B5D" // Raspberry Pink - Primary Theme Color
       />
-      {/* Seeds - subtle dots */}
-      <circle cx="26" cy="30" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-      <circle cx="38" cy="30" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-      <circle cx="22" cy="38" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-      <circle cx="32" cy="38" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-      <circle cx="42" cy="38" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-      <circle cx="28" cy="46" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-      <circle cx="36" cy="46" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-      <circle cx="32" cy="25" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-       <circle cx="29" cy="52" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-      <circle cx="35" cy="52" r="1.5" fill="#FAD2E1" fillOpacity="0.7" />
-
-
-      {/* Leaves (Sepals) */}
-      <path
-        d="M32 4C28 10 22 12 20 18C20 18 32 16 32 4Z"
-        fill="#D0FF14" // Lime Green (Accent Theme Color)
+      
+      {/* Seeds - using a lighter pink from the theme for a subtle look */}
+      <circle cx="22" cy="30" r="1.5" fill="#FAD2E1" />
+      <circle cx="32" cy="26" r="1.5" fill="#FAD2E1" />
+      <circle cx="42" cy="30" r="1.5" fill="#FAD2E1" />
+      <circle cx="27" cy="38" r="1.5" fill="#FAD2E1" />
+      <circle cx="37" cy="38" r="1.5" fill="#FAD2E1" />
+      <circle cx="22" cy="46" r="1.5" fill="#FAD2E1" />
+      <circle cx="32" cy="44" r="1.5" fill="#FAD2E1" />
+      <circle cx="42" cy="46" r="1.5" fill="#FAD2E1" />
+      <circle cx="27" cy="52" r="1.5" fill="#FAD2E1" />
+      <circle cx="37" cy="52" r="1.5" fill="#FAD2E1" />
+      
+      {/* Leaves (Sepals) - using the accent green */}
+      <path 
+        d="M32 10C28 14 24 16 20 20L32 15L44 20C40 16 36 14 32 10Z" 
+        fill="#D0FF14" // Lime Green - Accent Theme Color
       />
-      <path
-        d="M32 4C36 10 42 12 44 18C44 18 32 16 32 4Z"
-        fill="#D0FF14" // Lime Green
+      <path 
+        d="M32 10L30 2C32 2 34 2 32 10Z" // Stem
+        fill="#D0FF14"
       />
-      <path
-        d="M24 12C20 18 22 22 28 22C28 22 24 18 24 12Z"
-        fill="#D0FF14" // Lime Green
-      />
-      <path
-        d="M40 12C44 18 42 22 36 22C36 22 40 18 40 12Z"
-        fill="#D0FF14" // Lime Green
-      />
-       {/* Stem */}
-      <rect x="30.5" y="0" width="3" height="6" fill="#A07855" rx="1"/>
     </svg>
   );
 };
