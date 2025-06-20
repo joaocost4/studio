@@ -10,6 +10,7 @@ import { db } from "@/lib/firebase";
 import { TurmaSelectionDialog } from "@/components/dialogs/TurmaSelectionDialog";
 import type { UserProfile } from "@/contexts/AuthContext";
 import { AnnouncementDialog } from "@/components/dialogs/AnnouncementDialog"; // Import new dialog
+import { USER_ROLES } from "@/lib/constants"; // Added USER_ROLES for checking
 
 interface TurmaData {
   id: string;
@@ -46,55 +47,62 @@ export default function AuthenticatedLayout({
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
 
   useEffect(() => {
-    if (currentUser && userProfile && !authLoading) {
-      const fetchTurmasAndAnnouncements = async () => {
-        setLoadingTurmas(true);
-        setLoadingAnnouncements(true);
-        try {
-          // Fetch Turmas
-          const turmasSnapshot = await getDocs(collection(db, "turmas"));
-          const turmasList = turmasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TurmaData));
-          setTurmas(turmasList);
-          setActiveTurmas(turmasList.filter(t => t.ativa));
+    const fetchTurmasAndAnnouncements = async () => {
+      if (!currentUser || !userProfile) {
+        setLoadingTurmas(false);
+        setLoadingAnnouncements(false);
+        return;
+      }
 
-          // Fetch Announcements
-          if (userProfile.turmaId || userProfile.role === USER_ROLES.ADMIN) { // Only fetch if turmaId or admin
-            const now = Timestamp.now();
-            const announcementsQuery = query(
-              collection(db, "comunicados"),
-              where("expiryDate", ">", now),
-              orderBy("expiryDate"), // Could be orderBy("createdAt", "desc") to get newest first
-              orderBy("createdAt", "desc") 
-            );
-            const announcementsSnapshot = await getDocs(announcementsQuery);
-            const allActiveAnnouncements = announcementsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FullComunicadoData));
-            
-            const relevantAnnouncements = allActiveAnnouncements.filter(ann => 
-              ann.targetTurmaId === "ALL" || ann.targetTurmaId === userProfile.turmaId
-            );
+      setLoadingTurmas(true);
+      setLoadingAnnouncements(true);
+      try {
+        // Fetch Turmas
+        const turmasSnapshot = await getDocs(collection(db, "turmas"));
+        const turmasList = turmasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TurmaData));
+        setTurmas(turmasList);
+        setActiveTurmas(turmasList.filter(t => t.ativa));
 
-            if (relevantAnnouncements.length > 0) {
-              // Show the newest relevant announcement not yet seen in this session
-              for (const ann of relevantAnnouncements) { // Iterate to find first unseen
-                const seenKey = `seen_announcement_${ann.id}`;
-                if (!sessionStorage.getItem(seenKey)) {
-                  setActiveAnnouncementToShow(ann);
-                  setIsAnnouncementDialogOpen(true);
-                  sessionStorage.setItem(seenKey, "true");
-                  break; // Show only one
-                }
+        // Fetch Announcements
+        // Only fetch if user has a turmaId OR is an admin (admins might see "ALL" or specific turmas)
+        if (userProfile.turmaId || userProfile.role === USER_ROLES.ADMIN) {
+          const now = Timestamp.now();
+          const announcementsQuery = query(
+            collection(db, "comunicados"),
+            where("expiryDate", ">", now),
+            orderBy("expiryDate"), 
+            orderBy("createdAt", "desc") 
+          );
+          const announcementsSnapshot = await getDocs(announcementsQuery);
+          const allActiveAnnouncements = announcementsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FullComunicadoData));
+          
+          const relevantAnnouncements = allActiveAnnouncements.filter(ann => 
+            ann.targetTurmaId === "ALL" || ann.targetTurmaId === userProfile.turmaId
+          );
+
+          if (relevantAnnouncements.length > 0) {
+            for (const ann of relevantAnnouncements) {
+              const seenKey = `seen_announcement_${ann.id}`; // Corrected line
+              if (!sessionStorage.getItem(seenKey)) {
+                setActiveAnnouncementToShow(ann);
+                setIsAnnouncementDialogOpen(true);
+                sessionStorage.setItem(seenKey, "true");
+                break; 
               }
             }
           }
-        } catch (error) {
-          console.error("Error fetching initial data:", error);
-        } finally {
-          setLoadingTurmas(false);
-          setLoadingAnnouncements(false);
         }
-      };
+      } catch (error) {
+        console.error("Error fetching initial data (turmas/announcements):", error);
+      } finally {
+        setLoadingTurmas(false);
+        setLoadingAnnouncements(false);
+      }
+    };
+    
+    if (currentUser && userProfile && !authLoading) {
       fetchTurmasAndAnnouncements();
-    } else if (!authLoading) {
+    } else if (!authLoading) { // If not loading and no user/profile, ensure loading states are false
         setLoadingTurmas(false);
         setLoadingAnnouncements(false);
     }
@@ -103,15 +111,16 @@ export default function AuthenticatedLayout({
   useEffect(() => {
     if (!authLoading && userProfile && !loadingTurmas) {
       const userTurma = turmas.find(t => t.id === userProfile.turmaId);
-      const needsTurmaSelection = !userProfile.turmaId || (userTurma && !userTurma.ativa);
+      // Needs selection if no turmaId, OR if their current turmaId points to an inactive turma
+      const needsTurmaSelection = !userProfile.turmaId || (userProfile.turmaId && userTurma && !userTurma.ativa);
       
-      if (needsTurmaSelection) {
+      if (needsTurmaSelection && activeTurmas.length > 0) { // Only open if there are active turmas to select from
          setIsTurmaDialogOpen(true);
       } else {
          setIsTurmaDialogOpen(false);
       }
     }
-  }, [userProfile, turmas, authLoading, loadingTurmas]);
+  }, [userProfile, turmas, activeTurmas, authLoading, loadingTurmas]);
 
 
   if (authLoading || (currentUser && (loadingTurmas || loadingAnnouncements) && !isTurmaDialogOpen && !isAnnouncementDialogOpen )) { 
@@ -124,7 +133,9 @@ export default function AuthenticatedLayout({
   }
 
   if (!currentUser) {
-    return null;
+    // This case should ideally be handled by useRequireAuth redirecting to /login
+    // If still here, it might be a brief moment before redirect, or if useRequireAuth is not used on a page.
+    return null; 
   }
   
   return (
@@ -138,7 +149,8 @@ export default function AuthenticatedLayout({
           onOpenChange={setIsTurmaDialogOpen}
           onTurmaSelected={async () => {
             await refreshUserProfile(); 
-            setIsTurmaDialogOpen(false); 
+            // No need to explicitly set setIsTurmaDialogOpen(false) here, 
+            // as the parent's useEffect for turma selection will handle it based on new userProfile.
           }}
         />
       )}
