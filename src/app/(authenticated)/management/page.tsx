@@ -22,7 +22,7 @@ import {
   FlaskConical,
   UploadCloud,
   CalendarIcon,
-  ArrowRight // Added for link button
+  ArrowRight
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
@@ -44,7 +44,7 @@ import { db } from "@/lib/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Loader2 } from "lucide-react";
-import Link from "next/link"; // Import Link
+import Link from "next/link";
 
 interface TurmaData {
   id: string;
@@ -503,7 +503,7 @@ export default function ManagementPage() {
             </Button>
 
              <Button variant="secondary" className="w-full" onClick={() => handleManagementAction("Visualizar Calendário Acadêmico")}>
-                <CalendarDays className="mr-2 h-5 w-5" /> Visualizar Calendário
+                <CalendarDays className="mr-2 h-5 w-5" /> Visualizar Calendário [OFF]
             </Button>
             
             {canAddStudentToTurma && (
@@ -675,7 +675,7 @@ export default function ManagementPage() {
             </Dialog>
 
             <Button variant="outline" onClick={() => handleManagementAction("Painel de Desempenho da Turma")} className="w-full">
-              <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma
+              <BarChart3 className="mr-2 h-5 w-5" /> Desempenho da Turma [OFF]
             </Button>
 
             <Dialog open={isCadastrarProvaDialogOpen} onOpenChange={(isOpen) => {
@@ -814,7 +814,7 @@ export default function ManagementPage() {
             </Dialog>
 
             <Button variant="default" onClick={() => handleManagementAction("Solicitar Materiais/Recursos")} className="w-full col-span-1 md:col-span-2 lg:col-span-1 bg-primary/70 hover:bg-primary/60">
-              <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais
+              <PackagePlus className="mr-2 h-5 w-5" /> Solicitar Materiais [OFF]
             </Button>
           </div>
 
@@ -826,7 +826,7 @@ export default function ManagementPage() {
                   <Users className="mr-2 h-5 w-5" /> Gerir Turmas
                 </Button>
                  <Button variant="outline" className="w-full" onClick={() => handleManagementAction("Teste")}>
-                    <FlaskConical className="mr-2 h-5 w-5" /> Teste
+                    <FlaskConical className="mr-2 h-5 w-5" /> Teste [OFF]
                 </Button>
               </div>
             </div>
@@ -850,6 +850,4 @@ export default function ManagementPage() {
     </div>
   );
 }
-    
-
     
