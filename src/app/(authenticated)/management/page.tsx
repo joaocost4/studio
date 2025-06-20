@@ -21,7 +21,8 @@ import {
   BookCopy,
   FlaskConical,
   UploadCloud,
-  CalendarIcon
+  CalendarIcon,
+  ArrowRight // Added for link button
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
@@ -36,21 +37,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { collection, query, where, getDocs, doc, updateDoc, Timestamp, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
-import Link from "next/link";
-import { format, addDays } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-
+import Link from "next/link"; // Import Link
 
 interface TurmaData {
   id: string;
@@ -76,16 +70,6 @@ interface ProvaData {
   data: Timestamp; 
   createdAt: Timestamp; 
 }
-
-interface ComunicadoData {
-  title: string;
-  message: string;
-  expiryDate: Timestamp;
-  targetTurmaId: string; // 'ALL' or specific turmaId
-  createdByUid: string;
-  createdAt: Timestamp;
-}
-
 
 export default function ManagementPage() {
   const { userProfile } = useAuth();
@@ -124,15 +108,6 @@ export default function ManagementPage() {
   // "Imprimir Lista de Chamada" dialog (Admin only)
   const [isSelectTurmaForPrintDialogOpen, setIsSelectTurmaForPrintDialogOpen] = useState(false);
   const [adminSelectedTurmaIdForPrintList, setAdminSelectedTurmaIdForPrintList] = useState<string | undefined>(undefined);
-
-  // "Gerenciar Comunicados" Dialog
-  const [isComunicadoDialogOpen, setIsComunicadoDialogOpen] = useState(false);
-  const [comunicadoTitle, setComunicadoTitle] = useState("");
-  const [comunicadoMessage, setComunicadoMessage] = useState("");
-  const [comunicadoExpiryDate, setComunicadoExpiryDate] = useState<Date | undefined>(addDays(new Date(), 7));
-  const [comunicadoTargetTurmaId, setComunicadoTargetTurmaId] = useState<string | undefined>(undefined);
-  const [comunicadoSendToAll, setComunicadoSendToAll] = useState(false);
-  const [isSavingComunicado, setIsSavingComunicado] = useState(false);
 
   const isAdmin = userProfile?.role === USER_ROLES.ADMIN;
   const isRepresentative = userProfile?.role === USER_ROLES.REPRESENTATIVE;
@@ -436,80 +411,6 @@ export default function ManagementPage() {
     }
   };
 
-  const handleSaveComunicado = async () => {
-    if (!userProfile) {
-      toast({ title: "Usuário não autenticado", variant: "destructive" });
-      return;
-    }
-    if (!comunicadoTitle.trim()) {
-      toast({ title: "Título do Comunicado Obrigatório", variant: "destructive" });
-      return;
-    }
-    if (!comunicadoMessage.trim()) {
-      toast({ title: "Mensagem do Comunicado Obrigatória", variant: "destructive" });
-      return;
-    }
-    if (!comunicadoExpiryDate) {
-      toast({ title: "Data de Expiração Obrigatória", variant: "destructive" });
-      return;
-    }
-
-    let finalTargetTurmaId = "";
-    if (isAdmin) {
-      if (comunicadoSendToAll) {
-        finalTargetTurmaId = "ALL";
-      } else if (comunicadoTargetTurmaId) {
-        finalTargetTurmaId = comunicadoTargetTurmaId;
-      } else {
-        toast({ title: "Selecione uma Turma ou Marque 'Todas as Turmas'", variant: "destructive" });
-        return;
-      }
-    } else if (isRepresentative && userProfile.turmaId) {
-      finalTargetTurmaId = userProfile.turmaId;
-    } else {
-      toast({ title: "Não foi possível determinar a turma alvo.", variant: "destructive" });
-      return;
-    }
-
-    setIsSavingComunicado(true);
-    try {
-      const newComunicado: Omit<ComunicadoData, 'createdAt'> & { createdAt: any } = { // Use 'any' for serverTimestamp
-        title: comunicadoTitle.trim(),
-        message: comunicadoMessage.trim(),
-        expiryDate: Timestamp.fromDate(comunicadoExpiryDate),
-        targetTurmaId: finalTargetTurmaId,
-        createdByUid: userProfile.uid,
-        createdAt: serverTimestamp(), // Firestore server timestamp
-      };
-
-      await addDoc(collection(db, "comunicados"), newComunicado);
-
-      toast({
-        title: "Comunicado Salvo!",
-        description: `O comunicado "${comunicadoTitle.trim()}" foi salvo com sucesso.`,
-      });
-
-      // Reset form and close dialog
-      setIsComunicadoDialogOpen(false);
-      setComunicadoTitle("");
-      setComunicadoMessage("");
-      setComunicadoExpiryDate(addDays(new Date(), 7));
-      setComunicadoTargetTurmaId(undefined);
-      setComunicadoSendToAll(false);
-
-    } catch (error: any) {
-      console.error("Error saving comunicado:", error);
-      let errMsg = "Ocorreu um erro ao salvar o comunicado.";
-      if (error.code === 'permission-denied') {
-        errMsg = "Permissão negada para salvar o comunicado. Verifique as regras do Firestore.";
-      }
-      toast({ title: "Erro ao Salvar Comunicado", description: errMsg, variant: "destructive" });
-    } finally {
-      setIsSavingComunicado(false);
-    }
-  };
-
-
   const PageIconComponent = isAdmin ? Briefcase : ClipboardSignature; 
   const pageTitle = isAdmin ? "Página de Gestão Avançada" : "Painel do Representante de Turma";
   const pageDescription = isAdmin 
@@ -594,115 +495,12 @@ export default function ManagementPage() {
                     <Printer className="mr-2 h-5 w-5" /> Imprimir Lista de Chamada
                 </Button>
             )}
-
-            <Dialog open={isComunicadoDialogOpen} onOpenChange={(isOpen) => {
-                setIsComunicadoDialogOpen(isOpen);
-                if (!isOpen) {
-                    setComunicadoTitle("");
-                    setComunicadoMessage("");
-                    setComunicadoExpiryDate(addDays(new Date(), 7));
-                    setComunicadoTargetTurmaId(undefined);
-                    setComunicadoSendToAll(false);
-                }
-            }}>
-                <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                        <Megaphone className="mr-2 h-5 w-5" /> Gerenciar Comunicados
-                    </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>Criar Novo Comunicado</DialogTitle>
-                        <DialogDescription>
-                            Crie um comunicado para {isAdmin ? "uma ou todas as turmas" : `a turma ${userProfile?.turmaNome || 'N/A'}`}.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="comunicado-title" className="text-right">Título</Label>
-                            <Input id="comunicado-title" value={comunicadoTitle} onChange={(e) => setComunicadoTitle(e.target.value)} className="col-span-3" placeholder="Título do Comunicado" />
-                        </div>
-                        <div className="grid grid-cols-4 items-start gap-4">
-                            <Label htmlFor="comunicado-message" className="text-right mt-2">Mensagem</Label>
-                            <Textarea id="comunicado-message" value={comunicadoMessage} onChange={(e) => setComunicadoMessage(e.target.value)} className="col-span-3" placeholder="Digite sua mensagem aqui..." rows={4} />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="comunicado-expiry" className="text-right">Expira em</Label>
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant={"outline"}
-                                        className={`col-span-3 justify-start text-left font-normal ${!comunicadoExpiryDate && "text-muted-foreground"}`}
-                                    >
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {comunicadoExpiryDate ? format(comunicadoExpiryDate, "PPP", { locale: ptBR }) : <span>Escolha uma data</span>}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                    <Calendar
-                                        mode="single"
-                                        selected={comunicadoExpiryDate}
-                                        onSelect={setComunicadoExpiryDate}
-                                        initialFocus
-                                        locale={ptBR}
-                                        disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
-                                    />
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                        {isAdmin && (
-                            <>
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor="comunicado-turma" className="text-right">Turma Específica</Label>
-                                    <Select 
-                                        value={comunicadoTargetTurmaId} 
-                                        onValueChange={setComunicadoTargetTurmaId}
-                                        disabled={comunicadoSendToAll || loadingTurmas || activeTurmas.length === 0}
-                                    >
-                                        <SelectTrigger className="col-span-3">
-                                            <SelectValue placeholder={loadingTurmas ? "Carregando..." : (activeTurmas.length === 0 ? "Nenhuma turma ativa" : "Selecione uma turma")} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {activeTurmas.map(turma => (
-                                                <SelectItem key={turma.id} value={turma.id}>{turma.nome}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <div /> 
-                                    <div className="col-span-3 flex items-center space-x-2">
-                                        <Checkbox 
-                                            id="comunicado-send-all" 
-                                            checked={comunicadoSendToAll} 
-                                            onCheckedChange={(checked) => setComunicadoSendToAll(Boolean(checked))} 
-                                        />
-                                        <Label htmlFor="comunicado-send-all" className="text-sm font-normal">
-                                            Enviar para todas as turmas ativas
-                                        </Label>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-                        {!isAdmin && userProfile?.turmaNome && (
-                            <p className="text-sm text-muted-foreground col-span-4 text-center">
-                                Este comunicado será enviado para sua turma: <span className="font-semibold text-foreground">{userProfile.turmaNome}</span>.
-                            </p>
-                        )}
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setIsComunicadoDialogOpen(false)} disabled={isSavingComunicado}>Cancelar</Button>
-                        <Button 
-                            type="button" 
-                            onClick={handleSaveComunicado} 
-                            disabled={isSavingComunicado || !comunicadoTitle.trim() || !comunicadoMessage.trim() || !comunicadoExpiryDate || (isAdmin && !comunicadoSendToAll && !comunicadoTargetTurmaId)}
-                        >
-                            {isSavingComunicado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            {isSavingComunicado ? "Enviando..." : "Enviar Comunicado"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/management/announcements">
+                <Megaphone className="mr-2 h-5 w-5" /> Gerenciar Comunicados <ArrowRight className="ml-auto h-4 w-4"/>
+              </Link>
+            </Button>
 
              <Button variant="secondary" className="w-full" onClick={() => handleManagementAction("Visualizar Calendário Acadêmico")}>
                 <CalendarDays className="mr-2 h-5 w-5" /> Visualizar Calendário
@@ -1038,7 +836,7 @@ export default function ManagementPage() {
             <h3 className="text-xl font-semibold text-secondary-foreground/80 mb-2">Avisos e Próximos Passos:</h3>
             <ul className="list-disc list-inside text-sm text-secondary-foreground/70 space-y-1">
               <li>A funcionalidade "Imprimir Lista de Chamada" agora direciona para uma página de impressão.</li>
-              <li>A funcionalidade "Gerenciar Comunicados" agora salva comunicados no Firestore.</li>
+              <li>A funcionalidade "Gerenciar Comunicados" agora direciona para uma página CRUD dedicada.</li>
               <li>As funcionalidades de "Calendário Acadêmico" etc., ainda são simulações.</li>
               <li>A funcionalidade "Adicionar Aluno à Turma" interage com o Firestore.</li>
               <li>A funcionalidade "Cadastrar Disciplina" salva os dados no Firestore.</li>
