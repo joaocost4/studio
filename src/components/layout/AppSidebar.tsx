@@ -20,7 +20,7 @@ import { Home, Users, ShieldCheck, LogOut, Apple, Calculator, ChevronDown, Chevr
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { USER_ROLES } from "@/lib/constants";
-import StrawberryIcon from "../icons/StrawberryIcon"; // Corrected import
+import StrawberryIcon from "../icons/StrawberryIcon";
 import { usePathname } from "next/navigation";
 import React, { useState, useEffect } from "react";
 
@@ -176,7 +176,7 @@ export function AppSidebar() {
             <StrawberryIcon className="h-8 w-8 text-primary" />
             <h1 className="text-xl font-headline font-semibold group-data-[collapsible=icon]:hidden">Moranguinho</h1>
           </div>
-          <span className="text-xs text-sidebar-foreground/70 ml-10 group-data-[collapsible=icon]:hidden">beta V 0.5</span>
+          <span className="text-xs text-sidebar-foreground/70 ml-10 group-data-[collapsible=icon]:hidden">beta V 0.6</span>
         </Link>
       </SidebarHeader>
 

@@ -1,10 +1,11 @@
+
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/contexts/AuthContext';
 
-const APP_NAME = "Calculadora da Moranguinho";
-const APP_DESCRIPTION = "Calculadora da Moranguinho - App de calculadoras temáticas";
+const APP_NAME = "Sistema Moranguinho"; // Updated PWA App Name
+const APP_DESCRIPTION = "Sistema Moranguinho - App de calculadoras temáticas";
 
 export const metadata: Metadata = {
   applicationName: APP_NAME,
@@ -13,18 +14,18 @@ export const metadata: Metadata = {
     template: `%s - ${APP_NAME}`,
   },
   description: APP_DESCRIPTION,
-  manifest: "/manifest.json",
+  manifest: "/manifest.json", // Assumes manifest.json will handle PWA icons
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: APP_NAME,
+    title: APP_NAME, // Updated Apple Web App title
   },
   formatDetection: {
     telephone: false,
   },
   icons: {
-    shortcut: "/favicon.ico", // Placeholder, will not generate actual file
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }], // Placeholder
+    shortcut: "/favicon.ico", // Remains placeholder, cannot use TSX as favicon image
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }], // Updated to standard path
   },
 };
 
