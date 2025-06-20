@@ -77,6 +77,16 @@ interface ProvaData {
   createdAt: Timestamp; 
 }
 
+interface ComunicadoData {
+  title: string;
+  message: string;
+  expiryDate: Timestamp;
+  targetTurmaId: string; // 'ALL' or specific turmaId
+  createdByUid: string;
+  createdAt: Timestamp;
+}
+
+
 export default function ManagementPage() {
   const { userProfile } = useAuth();
   useRequireAuth({ allowedRoles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] });
@@ -135,17 +145,13 @@ export default function ManagementPage() {
       const turmasSnapshot = await getDocs(turmasQuery);
       const turmasList = turmasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TurmaData));
       setActiveTurmas(turmasList);
-      if (isAdmin && turmasList.length > 0 && !comunicadoTargetTurmaId) {
-        // Pre-select first turma for admin in comunicado dialog, if not sending to all
-        // setComunicadoTargetTurmaId(turmasList[0].id); 
-      }
     } catch (error) {
       console.error("Error fetching active turmas:", error);
       toast({ title: "Erro ao buscar turmas", description: "Não foi possível carregar a lista de turmas ativas.", variant: "destructive" });
     } finally {
       setLoadingTurmas(false);
     }
-  }, [isAdmin, isRepresentative, toast, comunicadoTargetTurmaId]);
+  }, [isAdmin, isRepresentative, toast]);
 
   useEffect(() => {
     fetchActiveTurmas();
@@ -431,65 +437,78 @@ export default function ManagementPage() {
   };
 
   const handleSaveComunicado = async () => {
+    if (!userProfile) {
+      toast({ title: "Usuário não autenticado", variant: "destructive" });
+      return;
+    }
     if (!comunicadoTitle.trim()) {
-        toast({title: "Título do Comunicado Obrigatório", variant: "destructive"});
-        return;
+      toast({ title: "Título do Comunicado Obrigatório", variant: "destructive" });
+      return;
     }
     if (!comunicadoMessage.trim()) {
-        toast({title: "Mensagem do Comunicado Obrigatória", variant: "destructive"});
-        return;
+      toast({ title: "Mensagem do Comunicado Obrigatória", variant: "destructive" });
+      return;
     }
     if (!comunicadoExpiryDate) {
-        toast({title: "Data de Expiração Obrigatória", variant: "destructive"});
-        return;
+      toast({ title: "Data de Expiração Obrigatória", variant: "destructive" });
+      return;
     }
-    if (isAdmin && !comunicadoSendToAll && !comunicadoTargetTurmaId) {
-        toast({title: "Selecione uma Turma ou Marque 'Todas as Turmas'", variant: "destructive"});
+
+    let finalTargetTurmaId = "";
+    if (isAdmin) {
+      if (comunicadoSendToAll) {
+        finalTargetTurmaId = "ALL";
+      } else if (comunicadoTargetTurmaId) {
+        finalTargetTurmaId = comunicadoTargetTurmaId;
+      } else {
+        toast({ title: "Selecione uma Turma ou Marque 'Todas as Turmas'", variant: "destructive" });
         return;
+      }
+    } else if (isRepresentative && userProfile.turmaId) {
+      finalTargetTurmaId = userProfile.turmaId;
+    } else {
+      toast({ title: "Não foi possível determinar a turma alvo.", variant: "destructive" });
+      return;
     }
 
     setIsSavingComunicado(true);
-    
-    let targetDescription = "";
-    if (isAdmin) {
-        if (comunicadoSendToAll) {
-            targetDescription = "Todas as turmas ativas";
-        } else {
-            const turma = activeTurmas.find(t => t.id === comunicadoTargetTurmaId);
-            targetDescription = turma ? `Turma: ${turma.nome}` : "Turma específica";
-        }
-    } else if (isRepresentative && userProfile?.turmaNome) {
-        targetDescription = `Turma: ${userProfile.turmaNome}`;
-    }
+    try {
+      const newComunicado: Omit<ComunicadoData, 'createdAt'> & { createdAt: any } = { // Use 'any' for serverTimestamp
+        title: comunicadoTitle.trim(),
+        message: comunicadoMessage.trim(),
+        expiryDate: Timestamp.fromDate(comunicadoExpiryDate),
+        targetTurmaId: finalTargetTurmaId,
+        createdByUid: userProfile.uid,
+        createdAt: serverTimestamp(), // Firestore server timestamp
+      };
 
-    // Simulate saving
-    console.log("Simulating save comunicado:", {
-        title: comunicadoTitle,
-        message: comunicadoMessage,
-        expiryDate: comunicadoExpiryDate,
-        targetTurmaId: isAdmin ? (comunicadoSendToAll ? "ALL" : comunicadoTargetTurmaId) : userProfile?.turmaId,
-        sendToAll: isAdmin ? comunicadoSendToAll : false,
-        createdBy: userProfile?.uid,
-        createdAt: new Date().toISOString()
-    });
+      await addDoc(collection(db, "comunicados"), newComunicado);
 
-    toast({
-        title: "Comunicado (Simulação)",
-        description: `Título: ${comunicadoTitle}. Para: ${targetDescription}. Expira em: ${format(comunicadoExpiryDate, 'dd/MM/yyyy')}.`,
-        duration: 7000
-    });
+      toast({
+        title: "Comunicado Salvo!",
+        description: `O comunicado "${comunicadoTitle.trim()}" foi salvo com sucesso.`,
+      });
 
-    // Reset form and close dialog
-    setTimeout(() => {
-      setIsSavingComunicado(false);
+      // Reset form and close dialog
       setIsComunicadoDialogOpen(false);
       setComunicadoTitle("");
       setComunicadoMessage("");
       setComunicadoExpiryDate(addDays(new Date(), 7));
       setComunicadoTargetTurmaId(undefined);
       setComunicadoSendToAll(false);
-    }, 1000);
+
+    } catch (error: any) {
+      console.error("Error saving comunicado:", error);
+      let errMsg = "Ocorreu um erro ao salvar o comunicado.";
+      if (error.code === 'permission-denied') {
+        errMsg = "Permissão negada para salvar o comunicado. Verifique as regras do Firestore.";
+      }
+      toast({ title: "Erro ao Salvar Comunicado", description: errMsg, variant: "destructive" });
+    } finally {
+      setIsSavingComunicado(false);
+    }
   };
+
 
   const PageIconComponent = isAdmin ? Briefcase : ClipboardSignature; 
   const pageTitle = isAdmin ? "Página de Gestão Avançada" : "Painel do Representante de Turma";
@@ -1019,13 +1038,13 @@ export default function ManagementPage() {
             <h3 className="text-xl font-semibold text-secondary-foreground/80 mb-2">Avisos e Próximos Passos:</h3>
             <ul className="list-disc list-inside text-sm text-secondary-foreground/70 space-y-1">
               <li>A funcionalidade "Imprimir Lista de Chamada" agora direciona para uma página de impressão.</li>
-              <li>A funcionalidade "Gerenciar Comunicados" agora abre um diálogo para criar anúncios (simulado).</li>
+              <li>A funcionalidade "Gerenciar Comunicados" agora salva comunicados no Firestore.</li>
               <li>As funcionalidades de "Calendário Acadêmico" etc., ainda são simulações.</li>
               <li>A funcionalidade "Adicionar Aluno à Turma" interage com o Firestore.</li>
               <li>A funcionalidade "Cadastrar Disciplina" salva os dados no Firestore.</li>
               <li>A funcionalidade "Cadastrar Prova" salva os dados no Firestore.</li>
               <li>A página "Lançar Notas da Turma" (/management/grades) utiliza IA (Genkit) para processamento.</li>
-              <li>Certifique-se de que as regras de segurança do Firestore permitem as operações nas coleções 'users', 'turmas', 'disciplinas', 'provas' e 'studentGrades'.</li>
+              <li>Certifique-se de que as regras de segurança do Firestore permitem as operações nas coleções 'users', 'turmas', 'disciplinas', 'provas', 'studentGrades' e 'comunicados'.</li>
             </ul>
           </div>
         </CardContent>
@@ -1033,4 +1052,6 @@ export default function ManagementPage() {
     </div>
   );
 }
+    
+
     
