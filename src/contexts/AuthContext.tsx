@@ -3,7 +3,7 @@
 
 import type { User as FirebaseUser } from 'firebase/auth';
 import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import React, { createContext, useEffect, useState, useCallback } from 'react';
@@ -11,24 +11,44 @@ import { auth, db } from '@/lib/firebase';
 import type { UserRole } from '@/lib/constants';
 import { USER_ROLES, FIREBASE_EMAIL_DOMAIN } from '@/lib/constants';
 
-export interface UserProfile { // Exporting for use in other components
+export interface UserProfile {
   uid: string;
-  email: string | null; 
+  email: string | null;
   matricula: string;
-  nomeCompleto: string; 
+  nomeCompleto: string;
   role: UserRole;
   turmaId?: string;
-  turmaNome?: string; // Added turmaNome
+  turmaNome?: string;
   actualEmail?: string;
+}
+
+export interface TurmaData {
+  id: string;
+  nome: string;
+  ativa: boolean;
+  createdAt?: Timestamp;
+}
+
+export interface FullComunicadoData {
+  id: string;
+  title: string;
+  message: string;
+  expiryDate: Timestamp;
+  targetTurmaId: string; // 'ALL' or specific turmaId
+  targetTurmaName?: string; // Added for display
+  createdByUid: string;
+  createdAt: Timestamp;
 }
 
 interface AuthContextType {
   currentUser: FirebaseUser | null;
   userProfile: UserProfile | null;
-  loading: boolean;
-  isMatriculaVerified: boolean; 
+  activeAnnouncements: FullComunicadoData[];
+  allTurmas: TurmaData[];
+  loadingSessionData: boolean; // Consolidated loading state
+  isMatriculaVerified: boolean;
   logout: () => Promise<void>;
-  refreshUserProfile: () => Promise<void>;
+  refreshSessionData: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,58 +56,93 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [activeAnnouncements, setActiveAnnouncements] = useState<FullComunicadoData[]>([]);
+  const [allTurmas, setAllTurmas] = useState<TurmaData[]>([]);
+  const [loadingSessionData, setLoadingSessionData] = useState(true);
   const [isMatriculaVerified, setIsMatriculaVerified] = useState(false);
   const router = useRouter();
 
-  const fetchUserProfile = useCallback(async (user: FirebaseUser) => {
+  const fetchSessionData = useCallback(async (user: FirebaseUser) => {
+    setLoadingSessionData(true);
     try {
+      // Fetch User Profile
       const userDocRef = doc(db, 'users', user.uid);
       const userDocSnap = await getDoc(userDocRef);
-      
-      let profileData: Omit<UserProfile, 'uid' | 'email'> = {
-        matricula: user.email?.split('@')[0] || 'N/A',
-        nomeCompleto: user.email?.split('@')[0] || 'N/A',
-        role: USER_ROLES.USER,
-        turmaId: undefined,
-        turmaNome: undefined,
-        actualEmail: user.email || undefined,
-      };
+      let profileData: UserProfile | null = null;
 
       if (userDocSnap.exists()) {
         const data = userDocSnap.data();
         profileData = {
+          uid: user.uid,
+          email: data.actualEmail || user.email,
           matricula: data.matricula,
           nomeCompleto: data.nomeCompleto || data.matricula,
           role: data.role || USER_ROLES.USER,
           turmaId: data.turmaId,
           actualEmail: data.actualEmail,
-          turmaNome: undefined, // Initialize, will be fetched next
+          turmaNome: undefined, // Will be fetched with allTurmas
         };
-
-        if (data.turmaId) {
-          try {
-            const turmaDocRef = doc(db, 'turmas', data.turmaId);
-            const turmaDocSnap = await getDoc(turmaDocRef);
-            if (turmaDocSnap.exists()) {
-              profileData.turmaNome = turmaDocSnap.data()?.nome;
-            }
-          } catch (turmaError) {
-            console.error("Error fetching turma name:", turmaError);
-            // turmaNome remains undefined
-          }
-        }
+      } else {
+         profileData = {
+            uid: user.uid,
+            email: user.email,
+            matricula: user.email?.split('@')[0] || 'N/A_fallback',
+            nomeCompleto: user.email?.split('@')[0] || 'Fallback User',
+            role: USER_ROLES.USER,
+            actualEmail: user.email || undefined,
+         };
       }
       
-      setUserProfile({
-        uid: user.uid,
-        email: profileData.actualEmail || user.email,
-        ...profileData,
-      });
+
+      // Fetch All Turmas
+      const turmasSnapshot = await getDocs(collection(db, "turmas"));
+      const turmasList = turmasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TurmaData));
+      setAllTurmas(turmasList);
+
+      // Set TurmaName in Profile if turmaId exists
+      if (profileData && profileData.turmaId) {
+        const userTurma = turmasList.find(t => t.id === profileData!.turmaId);
+        if (userTurma) {
+          profileData.turmaNome = userTurma.nome;
+        }
+      }
+      setUserProfile(profileData);
+
+
+      // Fetch Announcements (dependent on profileData and turmasList for filtering and naming)
+      if (profileData) { // Only fetch if profile is determined
+        const now = Timestamp.now();
+        const announcementsQuery = query(
+          collection(db, "comunicados"),
+          where("expiryDate", ">", now),
+          orderBy("expiryDate"),
+          orderBy("createdAt", "desc")
+        );
+        const announcementsSnapshot = await getDocs(announcementsQuery);
+        const allActiveAnnouncementsRaw = announcementsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Omit<FullComunicadoData, 'targetTurmaName'>));
+        
+        const relevantAnnouncements = allActiveAnnouncementsRaw
+          .filter(ann => ann.targetTurmaId === "ALL" || ann.targetTurmaId === profileData.turmaId)
+          .map(ann => {
+            let targetTurmaName = "Todas as Turmas";
+            if (ann.targetTurmaId !== "ALL") {
+              const turma = turmasList.find(t => t.id === ann.targetTurmaId);
+              targetTurmaName = turma ? turma.nome : "Turma Desconhecida";
+            }
+            return { ...ann, targetTurmaName };
+          });
+        setActiveAnnouncements(relevantAnnouncements);
+      } else {
+        setActiveAnnouncements([]);
+      }
 
     } catch (error) {
-      console.error("Error fetching user profile:", error);
-      setUserProfile(null);
+      console.error("Error fetching session data:", error);
+      setUserProfile(null); // Reset profile on error
+      setActiveAnnouncements([]);
+      setAllTurmas([]);
+    } finally {
+      setLoadingSessionData(false);
     }
   }, []);
 
@@ -98,43 +153,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (user.email?.endsWith(`@${process.env.NEXT_PUBLIC_FIREBASE_EMAIL_DOMAIN || FIREBASE_EMAIL_DOMAIN}`)) {
           setIsMatriculaVerified(true);
         } else {
-          setIsMatriculaVerified(false); 
+          setIsMatriculaVerified(false);
         }
-        await fetchUserProfile(user);
+        await fetchSessionData(user);
       } else {
         setUserProfile(null);
+        setActiveAnnouncements([]);
+        setAllTurmas([]);
         setIsMatriculaVerified(false);
+        setLoadingSessionData(false); // Ensure loading stops if no user
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [fetchUserProfile]);
+  }, [fetchSessionData]);
 
   const logout = async () => {
-    setLoading(true);
+    setLoadingSessionData(true);
     try {
       await firebaseSignOut(auth);
       setCurrentUser(null);
       setUserProfile(null);
+      setActiveAnnouncements([]);
+      setAllTurmas([]);
       setIsMatriculaVerified(false);
       router.push('/login');
     } catch (error) {
       console.error("Error signing out: ", error);
     } finally {
-      setLoading(false);
+      setLoadingSessionData(false);
     }
   };
 
-  const refreshUserProfile = useCallback(async () => {
+  const refreshSessionData = useCallback(async () => {
     if (currentUser) {
-      setLoading(true);
-      await fetchUserProfile(currentUser);
-      setLoading(false);
+      await fetchSessionData(currentUser);
     }
-  }, [currentUser, fetchUserProfile]);
+  }, [currentUser, fetchSessionData]);
   
-  const value = { currentUser, userProfile, loading, isMatriculaVerified, logout, refreshUserProfile };
+  const value = { 
+    currentUser, 
+    userProfile, 
+    activeAnnouncements,
+    allTurmas,
+    loadingSessionData, 
+    isMatriculaVerified, 
+    logout, 
+    refreshSessionData 
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
