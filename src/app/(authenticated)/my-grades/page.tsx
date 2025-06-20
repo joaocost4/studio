@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, AlertTriangle, Info, BookOpenText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 
 interface ProvaData {
   id: string;
@@ -48,6 +49,7 @@ export default function MyGradesPage() {
   const [disciplinasComNotas, setDisciplinasComNotas] = useState<DisciplinaWithGrades[]>([]);
   const [isLoadingGrades, setIsLoadingGrades] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast(); // Initialize useToast
 
   const calculateWeightedAverage = (provas: ProvaWithGrade[]): { weightedAverage?: number; totalWeightWithGrades?: number, possibleTotalWeight?: number } => {
     let totalWeightedScore = 0;
@@ -63,10 +65,6 @@ export default function MyGradesPage() {
     });
     
     if (totalWeightWithGrades > 0) {
-      // Calculate average based on points earned so far / total points possible from graded assessments
-      // Or, if you want an average based on total module weight:
-      // return totalWeightedScore (this would be the sum of (grade * weight) for all components)
-      // For this version, let's show the current earned points sum directly.
       return { weightedAverage: totalWeightedScore, totalWeightWithGrades, possibleTotalWeight };
     }
     return { weightedAverage: undefined, totalWeightWithGrades: 0, possibleTotalWeight };
@@ -84,7 +82,6 @@ export default function MyGradesPage() {
     setError(null);
 
     try {
-      // 1. Fetch Disciplinas for the user's turma
       const disciplinasQuery = query(collection(db, "disciplinas"), where("turmaId", "==", userProfile.turmaId));
       const disciplinasSnapshot = await getDocs(disciplinasQuery);
       const disciplinasList: DisciplinaData[] = disciplinasSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as DisciplinaData));
@@ -98,7 +95,6 @@ export default function MyGradesPage() {
       }
 
       const disciplinasComNotasPromises = disciplinasList.map(async (disciplina) => {
-        // 2. For each disciplina, fetch Provas
         const provasQuery = query(
           collection(db, "provas"),
           where("disciplinaId", "==", disciplina.id),
@@ -108,7 +104,6 @@ export default function MyGradesPage() {
         const provasList: ProvaData[] = provasSnapshot.docs.map(p => ({ id: p.id, ...p.data() } as ProvaData));
         provasList.sort((a,b) => a.data.toDate().getTime() - b.data.toDate().getTime() || a.nome.localeCompare(b.nome));
 
-        // 3. For each prova, fetch the student's grade
         const provasWithGradesPromises = provasList.map(async (prova) => {
           const gradeDocRef = doc(db, "studentGrades", `${userProfile.uid}_${prova.id}`);
           const gradeDocSnap = await getDoc(gradeDocRef);
@@ -150,6 +145,26 @@ export default function MyGradesPage() {
       setError("Você precisa estar logado para ver suas notas.");
     }
   }, [authLoading, userProfile, fetchGrades]);
+
+  const handleRowClick = (prova: ProvaWithGrade) => {
+    const formattedDate = prova.data ? prova.data.toDate().toLocaleDateString('pt-BR') : 'N/A';
+    const formattedGrade = prova.grade?.grade !== undefined ? prova.grade.grade.toFixed(2) : 'Pendente';
+    const formattedWeight = `${(prova.peso * 100).toFixed(0)}%`;
+    const formattedSubmittedAt = prova.grade?.submittedAt ? prova.grade.submittedAt.toDate().toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'}) : 'N/A';
+
+    toast({
+      title: `Detalhes: ${prova.nome}`,
+      description: (
+        <div className="space-y-1 text-sm">
+          <p><strong>Nota:</strong> {formattedGrade}</p>
+          <p><strong>Peso:</strong> {formattedWeight}</p>
+          <p><strong>Data da Avaliação:</strong> {formattedDate}</p>
+          <p><strong>Data de Lançamento:</strong> {formattedSubmittedAt}</p>
+        </div>
+      ),
+      duration: 8000, // Optional: longer duration for more details
+    });
+  };
 
   if (authLoading || isLoadingGrades) {
     return (
@@ -214,21 +229,25 @@ export default function MyGradesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Avaliação</TableHead>
-                      <TableHead className="text-center">Data</TableHead>
-                      <TableHead className="text-center">Peso</TableHead>
                       <TableHead className="text-right">Nota</TableHead>
+                      <TableHead className="text-center">Peso</TableHead>
+                      <TableHead className="text-center">Data</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {disciplina.provas.map((prova) => (
-                      <TableRow key={prova.id}>
+                      <TableRow 
+                        key={prova.id} 
+                        onClick={() => handleRowClick(prova)}
+                        className="cursor-pointer hover:bg-muted/60"
+                      >
                         <TableCell className="font-medium">{prova.nome}</TableCell>
-                        <TableCell className="text-center text-xs">
-                          {prova.data ? prova.data.toDate().toLocaleDateString('pt-BR') : 'N/A'}
-                        </TableCell>
-                        <TableCell className="text-center">{prova.peso.toFixed(2)}</TableCell>
                         <TableCell className="text-right font-semibold">
                           {prova.grade?.grade !== undefined ? prova.grade.grade.toFixed(2) : <Badge variant="outline">Pendente</Badge>}
+                        </TableCell>
+                        <TableCell className="text-center">{(prova.peso * 100).toFixed(0)}%</TableCell>
+                        <TableCell className="text-center text-xs">
+                          {prova.data ? prova.data.toDate().toLocaleDateString('pt-BR') : 'N/A'}
                         </TableCell>
                       </TableRow>
                     ))}
