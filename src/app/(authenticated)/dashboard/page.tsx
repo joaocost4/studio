@@ -4,12 +4,31 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StrawberryIcon } from "@/components/icons/StrawberryIcon";
-import { ArrowRight, Calculator, Lightbulb, GraduationCap, ClipboardList } from "lucide-react";
+import { ArrowRight, Lightbulb, GraduationCap, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { useAuth } from "@/hooks/useAuth";
+import { USER_ROLES } from "@/lib/constants";
 
 export default function DashboardPage() {
-  const cards = [
+  const { userProfile } = useAuth();
+
+  const allCards = [
+    {
+      id: "my-grades",
+      title: "Minhas Notas",
+      description: "Acompanhe seu desempenho e visualize suas notas lançadas nas disciplinas.",
+      icon: GraduationCap,
+      imageSrc: "https://placehold.co/600x300/FFDAB9/8B4513.png",
+      imageAlt: "Livro de notas e caneta",
+      imageAiHint: "grades report",
+      links: [
+        {
+          label: "Ver Minhas Notas",
+          href: "/my-grades",
+        }
+      ]
+    },
     {
       id: "calculators",
       title: "Calculadora Moranguinho",
@@ -42,22 +61,8 @@ export default function DashboardPage() {
           label: "Saiba Mais sobre a IA",
           href: "/how-ai-works",
         }
-      ]
-    },
-    {
-      id: "my-grades",
-      title: "Minhas Notas",
-      description: "Acompanhe seu desempenho e visualize suas notas lançadas nas disciplinas.",
-      icon: GraduationCap,
-      imageSrc: "https://placehold.co/600x300/FFDAB9/8B4513.png",
-      imageAlt: "Livro de notas e caneta",
-      imageAiHint: "grades report",
-      links: [
-        {
-          label: "Ver Minhas Notas",
-          href: "/my-grades",
-        }
-      ]
+      ],
+      roles: [USER_ROLES.USER] // Only visible to users with the 'user' role
     },
     {
       id: "mural",
@@ -75,6 +80,12 @@ export default function DashboardPage() {
       ]
     }
   ];
+
+  const cards = allCards.filter(card => {
+    if (!card.roles) return true; // If no roles specified, show to everyone
+    if (!userProfile) return false; // If no userProfile, don't show role-specific cards
+    return card.roles.includes(userProfile.role);
+  });
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -102,7 +113,7 @@ export default function DashboardPage() {
                   height={300}
                   className="w-full h-48 object-cover"
                   data-ai-hint={cardItem.imageAiHint}
-                  priority={cardItem.id === "calculators"} // Prioritize first image
+                  priority={cardItem.id === "my-grades" || cardItem.id === "calculators"} 
                 />
               )}
             </CardHeader>

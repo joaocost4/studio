@@ -20,7 +20,8 @@ import {
   CalendarDays, 
   BookCopy,
   FlaskConical,
-  UploadCloud
+  UploadCloud,
+  CalendarIcon
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation"; 
@@ -35,15 +36,17 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { collection, query, where, getDocs, doc, updateDoc, Timestamp, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -74,35 +77,30 @@ interface ProvaData {
   createdAt: Timestamp; 
 }
 
-interface StudentForPrintData {
-  uid: string;
-  matricula: string;
-  nomeCompleto: string;
-}
-
-
 export default function ManagementPage() {
   const { userProfile } = useAuth();
   useRequireAuth({ allowedRoles: [USER_ROLES.ADMIN, USER_ROLES.REPRESENTATIVE] });
   const router = useRouter(); 
   const { toast } = useToast();
 
-  // State for "Adicionar Aluno à Turma" dialog
-  const [isAddStudentToTurmaDialogOpen, setIsAddStudentToTurmaDialogOpen] = useState(false);
-  const [studentMatriculaToAdd, setStudentMatriculaToAdd] = useState("");
-  const [adminSelectedTurmaId, setAdminSelectedTurmaId] = useState<string | undefined>(undefined);
+  // Common state
   const [activeTurmas, setActiveTurmas] = useState<TurmaData[]>([]);
   const [loadingTurmas, setLoadingTurmas] = useState(false);
-  const [isProcessingAssignment, setIsProcessingAssignment] = useState(false);
 
-  // State for "Cadastrar Disciplina" dialog
+  // "Adicionar Aluno à Turma" dialog
+  const [isAddStudentToTurmaDialogOpen, setIsAddStudentToTurmaDialogOpen] = useState(false);
+  const [studentMatriculaToAdd, setStudentMatriculaToAdd] = useState("");
+  const [adminSelectedTurmaIdForStudent, setAdminSelectedTurmaIdForStudent] = useState<string | undefined>(undefined);
+  const [isProcessingStudentAssignment, setIsProcessingStudentAssignment] = useState(false);
+
+  // "Cadastrar Disciplina" dialog
   const [isCadastrarDisciplinaDialogOpen, setIsCadastrarDisciplinaDialogOpen] = useState(false);
   const [newDisciplinaName, setNewDisciplinaName] = useState("");
   const [newDisciplinaPrioridade, setNewDisciplinaPrioridade] = useState<number[]>([3]); 
   const [adminSelectedTurmaIdForDisciplina, setAdminSelectedTurmaIdForDisciplina] = useState<string | undefined>(undefined);
   const [isProcessingDisciplina, setIsProcessingDisciplina] = useState(false);
 
-  // State for "Cadastrar Prova" dialog
+  // "Cadastrar Prova" dialog
   const [isCadastrarProvaDialogOpen, setIsCadastrarProvaDialogOpen] = useState(false);
   const [selectedTurmaIdForProva, setSelectedTurmaIdForProva] = useState<string | undefined>(undefined);
   const [disciplinasForProvaDropdown, setDisciplinasForProvaDropdown] = useState<DisciplinaData[]>([]);
@@ -113,35 +111,46 @@ export default function ManagementPage() {
   const [newProvaData, setNewProvaData] = useState<string | undefined>(undefined); 
   const [isProcessingProva, setIsProcessingProva] = useState(false);
   
-  // State for "Imprimir Lista de Chamada" dialog (Admin only)
+  // "Imprimir Lista de Chamada" dialog (Admin only)
   const [isSelectTurmaForPrintDialogOpen, setIsSelectTurmaForPrintDialogOpen] = useState(false);
   const [adminSelectedTurmaIdForPrintList, setAdminSelectedTurmaIdForPrintList] = useState<string | undefined>(undefined);
 
+  // "Gerenciar Comunicados" Dialog
+  const [isComunicadoDialogOpen, setIsComunicadoDialogOpen] = useState(false);
+  const [comunicadoTitle, setComunicadoTitle] = useState("");
+  const [comunicadoMessage, setComunicadoMessage] = useState("");
+  const [comunicadoExpiryDate, setComunicadoExpiryDate] = useState<Date | undefined>(addDays(new Date(), 7));
+  const [comunicadoTargetTurmaId, setComunicadoTargetTurmaId] = useState<string | undefined>(undefined);
+  const [comunicadoSendToAll, setComunicadoSendToAll] = useState(false);
+  const [isSavingComunicado, setIsSavingComunicado] = useState(false);
 
   const isAdmin = userProfile?.role === USER_ROLES.ADMIN;
   const isRepresentative = userProfile?.role === USER_ROLES.REPRESENTATIVE;
 
   const fetchActiveTurmas = useCallback(async () => {
-    if (!isAdmin) return; 
+    if (!isAdmin && !isRepresentative) return; 
     setLoadingTurmas(true);
     try {
       const turmasQuery = query(collection(db, "turmas"), where("ativa", "==", true));
       const turmasSnapshot = await getDocs(turmasQuery);
       const turmasList = turmasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TurmaData));
       setActiveTurmas(turmasList);
+      if (isAdmin && turmasList.length > 0 && !comunicadoTargetTurmaId) {
+        // Pre-select first turma for admin in comunicado dialog, if not sending to all
+        // setComunicadoTargetTurmaId(turmasList[0].id); 
+      }
     } catch (error) {
       console.error("Error fetching active turmas:", error);
       toast({ title: "Erro ao buscar turmas", description: "Não foi possível carregar a lista de turmas ativas.", variant: "destructive" });
     } finally {
       setLoadingTurmas(false);
     }
-  }, [isAdmin, toast]);
+  }, [isAdmin, isRepresentative, toast, comunicadoTargetTurmaId]);
 
   useEffect(() => {
-    if (isAdmin) {
-      fetchActiveTurmas();
-    }
-  }, [isAdmin, fetchActiveTurmas]);
+    fetchActiveTurmas();
+  }, [fetchActiveTurmas]);
+
 
   useEffect(() => {
     const fetchDisciplinas = async (turmaId: string) => {
@@ -170,17 +179,14 @@ export default function ManagementPage() {
       }
     };
 
-    if (isAdmin && selectedTurmaIdForProva) {
-      fetchDisciplinas(selectedTurmaIdForProva);
-    } else if (isRepresentative && userProfile?.turmaId) {
-      if (!selectedTurmaIdForProva) { 
-         setSelectedTurmaIdForProva(userProfile.turmaId);
-      }
-      fetchDisciplinas(userProfile.turmaId);
+    let turmaIdToFetchFor = isAdmin ? selectedTurmaIdForProva : userProfile?.turmaId;
+
+    if (turmaIdToFetchFor) {
+      fetchDisciplinas(turmaIdToFetchFor);
     } else {
         setDisciplinasForProvaDropdown([]); 
     }
-  }, [isAdmin, isRepresentative, userProfile?.turmaId, selectedTurmaIdForProva, toast]);
+  }, [isAdmin, userProfile?.turmaId, selectedTurmaIdForProva, toast]);
 
 
   if (!userProfile || !(isAdmin || isRepresentative)) {
@@ -215,11 +221,11 @@ export default function ManagementPage() {
     let targetTurmaName: string | undefined = undefined;
 
     if (isAdmin) {
-      if (!adminSelectedTurmaId) {
+      if (!adminSelectedTurmaIdForStudent) {
         toast({ title: "Turma Necessária", description: "Por favor, selecione a turma de destino.", variant: "destructive" });
         return;
       }
-      targetTurmaId = adminSelectedTurmaId;
+      targetTurmaId = adminSelectedTurmaIdForStudent;
       targetTurmaName = activeTurmas.find(t => t.id === targetTurmaId)?.nome || "Turma Desconhecida";
     } else if (isRepresentative && userProfile.turmaId && userProfile.turmaNome) {
       targetTurmaId = userProfile.turmaId;
@@ -231,7 +237,7 @@ export default function ManagementPage() {
       return;
     }
 
-    setIsProcessingAssignment(true);
+    setIsProcessingStudentAssignment(true);
     try {
       const usersRef = collection(db, "users");
       const q = query(usersRef, where("matricula", "==", studentMatriculaToAdd.trim()));
@@ -239,7 +245,7 @@ export default function ManagementPage() {
 
       if (querySnapshot.empty) {
         toast({ title: "Aluno Não Encontrado", description: `Nenhum aluno encontrado com a matrícula "${studentMatriculaToAdd}".`, variant: "destructive" });
-        setIsProcessingAssignment(false);
+        setIsProcessingStudentAssignment(false);
         return;
       }
 
@@ -256,7 +262,7 @@ export default function ManagementPage() {
       });
       setIsAddStudentToTurmaDialogOpen(false);
       setStudentMatriculaToAdd("");
-      if (isAdmin) setAdminSelectedTurmaId(undefined);
+      if (isAdmin) setAdminSelectedTurmaIdForStudent(undefined);
 
     } catch (error: any) {
       console.error("Error assigning student to turma:", error);
@@ -266,7 +272,7 @@ export default function ManagementPage() {
       }
       toast({ title: "Erro na Atribuição", description: errMsg, variant: "destructive" });
     } finally {
-      setIsProcessingAssignment(false);
+      setIsProcessingStudentAssignment(false);
     }
   };
 
@@ -276,16 +282,16 @@ export default function ManagementPage() {
       return;
     }
 
-    let targetTurmaIdForDisciplina: string | undefined = undefined;
+    let targetTurmaIdForDisciplinaSubmit: string | undefined = undefined;
 
     if (isAdmin) {
       if (!adminSelectedTurmaIdForDisciplina) {
         toast({ title: "Turma Necessária", description: "Por favor, selecione a turma para a disciplina.", variant: "destructive" });
         return;
       }
-      targetTurmaIdForDisciplina = adminSelectedTurmaIdForDisciplina;
+      targetTurmaIdForDisciplinaSubmit = adminSelectedTurmaIdForDisciplina;
     } else if (isRepresentative && userProfile.turmaId) {
-      targetTurmaIdForDisciplina = userProfile.turmaId;
+      targetTurmaIdForDisciplinaSubmit = userProfile.turmaId;
     } else {
         toast({ title: "Erro de Configuração", description: "Não foi possível determinar a turma para a disciplina.", variant: "destructive" });
         return;
@@ -296,7 +302,7 @@ export default function ManagementPage() {
       const disciplinaData: Omit<DisciplinaData, 'id'> = {
         nome: newDisciplinaName.trim(),
         prioridade: newDisciplinaPrioridade[0],
-        turmaId: targetTurmaIdForDisciplina,
+        turmaId: targetTurmaIdForDisciplinaSubmit,
         createdAt: serverTimestamp() as Timestamp,
       };
 
@@ -424,6 +430,66 @@ export default function ManagementPage() {
     }
   };
 
+  const handleSaveComunicado = async () => {
+    if (!comunicadoTitle.trim()) {
+        toast({title: "Título do Comunicado Obrigatório", variant: "destructive"});
+        return;
+    }
+    if (!comunicadoMessage.trim()) {
+        toast({title: "Mensagem do Comunicado Obrigatória", variant: "destructive"});
+        return;
+    }
+    if (!comunicadoExpiryDate) {
+        toast({title: "Data de Expiração Obrigatória", variant: "destructive"});
+        return;
+    }
+    if (isAdmin && !comunicadoSendToAll && !comunicadoTargetTurmaId) {
+        toast({title: "Selecione uma Turma ou Marque 'Todas as Turmas'", variant: "destructive"});
+        return;
+    }
+
+    setIsSavingComunicado(true);
+    
+    let targetDescription = "";
+    if (isAdmin) {
+        if (comunicadoSendToAll) {
+            targetDescription = "Todas as turmas ativas";
+        } else {
+            const turma = activeTurmas.find(t => t.id === comunicadoTargetTurmaId);
+            targetDescription = turma ? `Turma: ${turma.nome}` : "Turma específica";
+        }
+    } else if (isRepresentative && userProfile?.turmaNome) {
+        targetDescription = `Turma: ${userProfile.turmaNome}`;
+    }
+
+    // Simulate saving
+    console.log("Simulating save comunicado:", {
+        title: comunicadoTitle,
+        message: comunicadoMessage,
+        expiryDate: comunicadoExpiryDate,
+        targetTurmaId: isAdmin ? (comunicadoSendToAll ? "ALL" : comunicadoTargetTurmaId) : userProfile?.turmaId,
+        sendToAll: isAdmin ? comunicadoSendToAll : false,
+        createdBy: userProfile?.uid,
+        createdAt: new Date().toISOString()
+    });
+
+    toast({
+        title: "Comunicado (Simulação)",
+        description: `Título: ${comunicadoTitle}. Para: ${targetDescription}. Expira em: ${format(comunicadoExpiryDate, 'dd/MM/yyyy')}.`,
+        duration: 7000
+    });
+
+    // Reset form and close dialog
+    setTimeout(() => {
+      setIsSavingComunicado(false);
+      setIsComunicadoDialogOpen(false);
+      setComunicadoTitle("");
+      setComunicadoMessage("");
+      setComunicadoExpiryDate(addDays(new Date(), 7));
+      setComunicadoTargetTurmaId(undefined);
+      setComunicadoSendToAll(false);
+    }, 1000);
+  };
 
   const PageIconComponent = isAdmin ? Briefcase : ClipboardSignature; 
   const pageTitle = isAdmin ? "Página de Gestão Avançada" : "Painel do Representante de Turma";
@@ -510,10 +576,115 @@ export default function ManagementPage() {
                 </Button>
             )}
 
+            <Dialog open={isComunicadoDialogOpen} onOpenChange={(isOpen) => {
+                setIsComunicadoDialogOpen(isOpen);
+                if (!isOpen) {
+                    setComunicadoTitle("");
+                    setComunicadoMessage("");
+                    setComunicadoExpiryDate(addDays(new Date(), 7));
+                    setComunicadoTargetTurmaId(undefined);
+                    setComunicadoSendToAll(false);
+                }
+            }}>
+                <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full">
+                        <Megaphone className="mr-2 h-5 w-5" /> Gerenciar Comunicados
+                    </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Criar Novo Comunicado</DialogTitle>
+                        <DialogDescription>
+                            Crie um comunicado para {isAdmin ? "uma ou todas as turmas" : `a turma ${userProfile?.turmaNome || 'N/A'}`}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="comunicado-title" className="text-right">Título</Label>
+                            <Input id="comunicado-title" value={comunicadoTitle} onChange={(e) => setComunicadoTitle(e.target.value)} className="col-span-3" placeholder="Título do Comunicado" />
+                        </div>
+                        <div className="grid grid-cols-4 items-start gap-4">
+                            <Label htmlFor="comunicado-message" className="text-right mt-2">Mensagem</Label>
+                            <Textarea id="comunicado-message" value={comunicadoMessage} onChange={(e) => setComunicadoMessage(e.target.value)} className="col-span-3" placeholder="Digite sua mensagem aqui..." rows={4} />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="comunicado-expiry" className="text-right">Expira em</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant={"outline"}
+                                        className={`col-span-3 justify-start text-left font-normal ${!comunicadoExpiryDate && "text-muted-foreground"}`}
+                                    >
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {comunicadoExpiryDate ? format(comunicadoExpiryDate, "PPP", { locale: ptBR }) : <span>Escolha uma data</span>}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                        mode="single"
+                                        selected={comunicadoExpiryDate}
+                                        onSelect={setComunicadoExpiryDate}
+                                        initialFocus
+                                        locale={ptBR}
+                                        disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        {isAdmin && (
+                            <>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="comunicado-turma" className="text-right">Turma Específica</Label>
+                                    <Select 
+                                        value={comunicadoTargetTurmaId} 
+                                        onValueChange={setComunicadoTargetTurmaId}
+                                        disabled={comunicadoSendToAll || loadingTurmas || activeTurmas.length === 0}
+                                    >
+                                        <SelectTrigger className="col-span-3">
+                                            <SelectValue placeholder={loadingTurmas ? "Carregando..." : (activeTurmas.length === 0 ? "Nenhuma turma ativa" : "Selecione uma turma")} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {activeTurmas.map(turma => (
+                                                <SelectItem key={turma.id} value={turma.id}>{turma.nome}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <div /> 
+                                    <div className="col-span-3 flex items-center space-x-2">
+                                        <Checkbox 
+                                            id="comunicado-send-all" 
+                                            checked={comunicadoSendToAll} 
+                                            onCheckedChange={(checked) => setComunicadoSendToAll(Boolean(checked))} 
+                                        />
+                                        <Label htmlFor="comunicado-send-all" className="text-sm font-normal">
+                                            Enviar para todas as turmas ativas
+                                        </Label>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                        {!isAdmin && userProfile?.turmaNome && (
+                            <p className="text-sm text-muted-foreground col-span-4 text-center">
+                                Este comunicado será enviado para sua turma: <span className="font-semibold text-foreground">{userProfile.turmaNome}</span>.
+                            </p>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsComunicadoDialogOpen(false)} disabled={isSavingComunicado}>Cancelar</Button>
+                        <Button 
+                            type="button" 
+                            onClick={handleSaveComunicado} 
+                            disabled={isSavingComunicado || !comunicadoTitle.trim() || !comunicadoMessage.trim() || !comunicadoExpiryDate || (isAdmin && !comunicadoSendToAll && !comunicadoTargetTurmaId)}
+                        >
+                            {isSavingComunicado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            {isSavingComunicado ? "Enviando..." : "Enviar Comunicado"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
-            <Button variant="outline" onClick={() => handleManagementAction("Gerenciar Comunicados da Turma")} className="w-full">
-              <Megaphone className="mr-2 h-5 w-5" /> Gerenciar Comunicados
-            </Button>
              <Button variant="secondary" className="w-full" onClick={() => handleManagementAction("Visualizar Calendário Acadêmico")}>
                 <CalendarDays className="mr-2 h-5 w-5" /> Visualizar Calendário
             </Button>
@@ -523,7 +694,7 @@ export default function ManagementPage() {
                 setIsAddStudentToTurmaDialogOpen(isOpen);
                 if (!isOpen) {
                   setStudentMatriculaToAdd("");
-                  if (isAdmin) setAdminSelectedTurmaId(undefined);
+                  if (isAdmin) setAdminSelectedTurmaIdForStudent(undefined);
                 }
               }}>
                 <DialogTrigger asChild>
@@ -561,7 +732,7 @@ export default function ManagementPage() {
                         {loadingTurmas ? (
                             <div className="col-span-3 flex items-center"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando turmas...</div>
                         ) : (
-                            <Select value={adminSelectedTurmaId} onValueChange={setAdminSelectedTurmaId}>
+                            <Select value={adminSelectedTurmaIdForStudent} onValueChange={setAdminSelectedTurmaIdForStudent}>
                                 <SelectTrigger className="col-span-3">
                                     <SelectValue placeholder="Selecione a turma de destino" />
                                 </SelectTrigger>
@@ -582,14 +753,14 @@ export default function ManagementPage() {
                     )}
                   </div>
                   <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setIsAddStudentToTurmaDialogOpen(false)} disabled={isProcessingAssignment}>Cancelar</Button>
+                    <Button type="button" variant="outline" onClick={() => setIsAddStudentToTurmaDialogOpen(false)} disabled={isProcessingStudentAssignment}>Cancelar</Button>
                     <Button 
                       type="button" 
                       onClick={handleAssignStudentToTurma}
-                      disabled={!studentMatriculaToAdd.trim() || (isAdmin && !adminSelectedTurmaId && activeTurmas.length > 0) || isProcessingAssignment || (isAdmin && loadingTurmas)}
+                      disabled={!studentMatriculaToAdd.trim() || (isAdmin && !adminSelectedTurmaIdForStudent && activeTurmas.length > 0) || isProcessingStudentAssignment || (isAdmin && loadingTurmas)}
                     >
-                      {isProcessingAssignment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      {isProcessingAssignment ? "Atribuindo..." : "Atribuir Aluno"}
+                      {isProcessingStudentAssignment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {isProcessingStudentAssignment ? "Atribuindo..." : "Atribuir Aluno"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -751,7 +922,7 @@ export default function ManagementPage() {
                                     disabled={(!selectedTurmaIdForProva && !userProfile?.turmaId) || disciplinasForProvaDropdown.length === 0}
                                 >
                                     <SelectTrigger className="col-span-3">
-                                        <SelectValue placeholder={(!selectedTurmaIdForProva && !userProfile?.turmaId) ? "Selecione uma turma primeiro" : "Selecione a disciplina"} />
+                                        <SelectValue placeholder={(!selectedTurmaIdForProva && !userProfile?.turmaId && !isAdmin) ? "Selecione uma turma primeiro" : "Selecione a disciplina"} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {disciplinasForProvaDropdown.map(disc => (
@@ -848,7 +1019,8 @@ export default function ManagementPage() {
             <h3 className="text-xl font-semibold text-secondary-foreground/80 mb-2">Avisos e Próximos Passos:</h3>
             <ul className="list-disc list-inside text-sm text-secondary-foreground/70 space-y-1">
               <li>A funcionalidade "Imprimir Lista de Chamada" agora direciona para uma página de impressão.</li>
-              <li>As funcionalidades de "Comunicados", "Calendário Acadêmico" etc., ainda são simulações.</li>
+              <li>A funcionalidade "Gerenciar Comunicados" agora abre um diálogo para criar anúncios (simulado).</li>
+              <li>As funcionalidades de "Calendário Acadêmico" etc., ainda são simulações.</li>
               <li>A funcionalidade "Adicionar Aluno à Turma" interage com o Firestore.</li>
               <li>A funcionalidade "Cadastrar Disciplina" salva os dados no Firestore.</li>
               <li>A funcionalidade "Cadastrar Prova" salva os dados no Firestore.</li>
@@ -862,5 +1034,3 @@ export default function ManagementPage() {
   );
 }
     
-
-      
