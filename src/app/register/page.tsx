@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RegisterForm } from "@/components/auth/RegisterForm";
-import { StrawberryIcon } from "@/components/icons/StrawberryIcon";
+import StrawberryIcon from "@/components/icons/StrawberryIcon";
 import Image from "next/image";
 
 export default function RegisterPage() {

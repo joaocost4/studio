@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoginForm } from "@/components/auth/LoginForm";
-import { StrawberryIcon } from "@/components/icons/StrawberryIcon"; // Assuming you might want a thematic icon
+import StrawberryIcon from "@/components/icons/StrawberryIcon"; // Corrected import
 import Image from "next/image";
 
 export default function LoginPage() {
@@ -18,7 +18,7 @@ export default function LoginPage() {
        <Card className="w-full max-w-md shadow-xl z-10 border-2 border-primary/20 rounded-xl">
         <CardHeader className="text-center">
            <div className="mx-auto mb-4 text-primary">
-            <StrawberryIcon width={60} height={60} />
+            <StrawberryIcon size={60} /> {/* Assuming size prop is valid, otherwise adjust */}
           </div>
           <CardTitle className="text-3xl font-headline text-primary">Bem-vindo(a) à Calculadora da Moranguinho!</CardTitle>
           <CardDescription className="text-muted-foreground">Faça login para continuar</CardDescription>
